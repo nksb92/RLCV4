@@ -1,0 +1,693 @@
+\section{Hardware Design}
+\label{sec:hardware_design}
+
+\subsection{Power Supply Architecture}
+\label{sec:power_supply}
+
+\subsubsection{\SI{3.3}{\volt} Rail — Converter Selection}
+\label{sec:3v3_converter}
+
+Two hardware revisions are defined.
+Revision~1 targets the XIAO ESP32-C3 module and employs the LMR54406 synchronous buck converter at \SI{5}{\volt}, followed by the module's onboard \ac{LDO} (ME6217, \SI{700}{\milli\ampere}) for the final \SI{3.3}{\volt} regulation.
+Revision~2 targets the ESP32-S3-MINI-1-N8 on a custom \ac{PCB} and replaces both stages with a single LMR54410 converter delivering \SI{3.3}{\volt} directly.
+
+\begin{table}[H]
+  \caption{DC-DC converter parameters — Revision~1 (LMR54406, \SI{5}{\volt} output).}
+  \label{tab:converter_rev1}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} \\ \hline \hline
+    Topology            & Synchronous Buck \\ \hline
+    Device              & LMR54406 (Texas Instruments) \\ \hline
+    Input voltage range & \SI{4}{\volt}--\SI{36}{\volt} \\ \hline
+    Output voltage      & \SI{5}{\volt} \\ \hline
+    Maximum output current & \SI{0.6}{\ampere} \\ \hline
+    Quiescent current   & \SI{80}{\micro\ampere} (typ.) \\ \hline
+    Package             & SOT-23-6 \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+  \caption{DC-DC converter parameters — Revision~2 (LMR54410, \SI{3.3}{\volt} output).}
+  \label{tab:converter_rev2}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} \\ \hline \hline
+    Topology            & Synchronous Buck \\ \hline
+    Device              & LMR54410 (Texas Instruments) \\ \hline
+    Input voltage range & \SI{4}{\volt}--\SI{36}{\volt} \\ \hline
+    Output voltage      & \SI{3.3}{\volt} (direct) \\ \hline
+    Maximum output current & \SI{1}{\ampere} \\ \hline
+    Quiescent current   & \SI{80}{\micro\ampere} (typ.) \\ \hline
+    Package             & SOT-23-6 (pin-compatible with LMR54406) \\ \hline
+  \end{tabularx}
+\end{table}
+
+The LMR54410 feeds \SI{3.3}{\volt} directly to the ESP32-S3-MINI-1-N8 module.
+The XIAO board and its onboard \ac{LDO} are eliminated; no topology change is required relative to Revision~1 — only the feedback resistors and current rating differ.
+
+\subsubsection{Input Voltage Source}
+\label{sec:input_voltage}
+
+\begin{table}[H]
+  \caption{Input voltage source analysis.}
+  \label{tab:input_voltage}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|X|}
+    \hline
+    \textbf{Source} & \textbf{Nominal $V_{IN}$} & \textbf{Result} & \textbf{Notes} \\ \hline \hline
+    \SI{24}{\volt} industrial supply & \SI{24}{\volt} & OK      & Sole power source for the board. \\ \hline
+    \ac{USB} \SI{5}{\volt} (VBUS)    & N/A             & Ignored & VBUS pin is strictly \ac{NC}. \\ \hline
+  \end{tabularx}
+\end{table}
+
+The system is self-powered from the \SI{24}{\volt} industrial supply.
+The \ac{USB} interface is utilised exclusively for data transfer.
+The \SI{24}{\volt} supply must be active for the ESP32-S3 to enumerate on a \ac{USB} host.
+
+\subsubsection{Input Protection — \SI{24}{\volt} Rail}
+\label{sec:input_protection}
+
+The \SI{24}{\volt} connector is keyed, preventing reverse-polarity insertion.
+Industrial \SI{24}{\volt} systems frequently generate inductive voltage spikes exceeding the \SI{36}{\volt} absolute maximum rating of the LMR54410.
+A \ac{TVS} diode and a bulk capacitor are mandatory at the input terminal.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0,2) node[left] {24V\_IN}
+          to[short, -*] (2,2)
+          to[short, -*] (3.5,2)
+          to[short, ->] (5.5,2) node[right] {VIN to DC-DC Converters};
+    \draw (2,0) to[zD, l=TVS1] (2,2);
+    \draw (3.5,2) to[C, l=$C_{bulk}$] (3.5,0);
+    \draw (2,0) to[short] (3.5,0);
+    \draw (2.75,0) node[sground] {};
+  \end{circuitikz}
+  \caption{Input protection network on the \SI{24}{\volt} rail.}
+  \label{fig:input_protection}
+\end{figure}
+
+A unidirectional \ac{TVS} diode (TVS1, SMAJ28A or SMF28A) clamps inductive transients, featuring a standoff voltage of \SI{28}{\volt} and a clamping voltage of approximately \SI{45}{\volt}.
+
+If reverse-polarity protection is required in addition to the keyed connector, a Schottky diode
+(e.g.\ SS24, \SI{2}{\ampere}/\SI{40}{\volt}) shall be placed in series on the \texttt{24V\_IN} line
+immediately before TVS1.
+
+\subsubsection{\ac{USB}-C Connector Minimum Circuit}
+\label{sec:usbc_circuit}
+
+The VBUS line is physically disconnected from the board power network.
+GND remains connected to provide a common reference for the D$+$/D$-$ data signals.
+Two \SI{5.1}{\kilo\ohm} pull-down resistors on CC1 and CC2 are mandatory; without them a \ac{USB}-C host will not activate the data lines.
+CC1 and CC2 must use separate resistors and must not be shorted together.
+
+The \ac{TVS} diode array (e.g.\ USBLC6-2SC6) must connect to the VBUS pin on the \ac{USB} connector
+even when VBUS is not used for board power, to provide the necessary reference for the \ac{ESD}
+steering diodes.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european, label distance=1mm]
+    \draw (0, 4) node[left] {VBUS} to[short, o-*] (4, 4) to[short, ->] (7.5, 4) node[right] {NC / Floating};
+
+    \draw (0, 2.5) node[left] {CC1} to[R, l=\SI{5.1}{\kilo\ohm}, o-] (2, 2.5) node[sground] {};
+    \draw (0, 1.5) node[left] {CC2} to[R, l=\SI{5.1}{\kilo\ohm}, o-] (2, 1.5) node[sground] {};
+
+    \draw (2.5, -1.25) rectangle (5.5, 1.25);
+    \node at (4, 0) {\small USBLC6-2SC6};
+    \node[right] at (2.5, 0.5) {\tiny 1};
+    \node[right] at (2.5, -0.5) {\tiny 3};
+    \node[left] at (5.5, 0.5) {\tiny 6};
+    \node[left] at (5.5, -0.5) {\tiny 4};
+    \node[below] at (4, 1.25) {\tiny 5};
+    \node[above] at (4, -1.25) {\tiny 2};
+
+    \draw (4, 4) to[short] (4, 1.25);
+
+    \draw (0, 0.5) node[left] {D$+$} to[short, o-] (2.5, 0.5);
+    \draw (5.5, 0.5) to[short, ->] (7.5, 0.5) node[right] {GPIO20 (USB D$+$)};
+
+    \draw (0, -0.5) node[left] {D$-$} to[short, o-] (2.5, -0.5);
+    \draw (5.5, -0.5) to[short, ->] (7.5, -0.5) node[right] {GPIO19 (USB D$-$)};
+
+    \draw (0, -1.5) node[left] {GND} to[short, o-] (4, -1.5);
+    \draw (4, -1.25) to[short, -*] (4, -1.5);
+    \draw (4, -1.5) node[sground] {};
+
+    \draw (0, -2.5) node[left] {Shield} to[R, l=\SI{1}{\mega\ohm}, o-] (4, -2.5) node[sground] {};
+    \node[right] at (4.5, -2.5) {or directly to GND};
+  \end{circuitikz}
+  \caption{\ac{USB}-C connector minimum circuit.}
+  \label{fig:usbc_circuit}
+\end{figure}
+
+\subsubsection{Current Budget and Power Chain Analysis}
+\label{sec:current_budget}
+
+\paragraph{Revision~1 — LMR54406 $\rightarrow$ \SI{5}{\volt} $\rightarrow$ \ac{LDO} $\rightarrow$ \SI{3.3}{\volt}}
+
+The ME6217 is a linear \ac{LDO}; its input current is approximately equal to its output current.
+The \SI{5}{\volt} rail must therefore supply the full \SI{3.3}{\volt} load current.
+
+\begin{table}[H]
+  \caption{Current budget — Revision~1 (\SI{5}{\volt} rail).}
+  \label{tab:current_rev1}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Consumer} & \textbf{Typical} & \textbf{Peak} \\ \hline \hline
+    ESP32-C3 via XIAO (\ac{WiFi} active) & \SI{240}{\milli\ampere} & \SI{500}{\milli\ampere} \\ \hline
+    128$\cdot$32 \ac{OLED} (SSD1306)  & \SI{15}{\milli\ampere}--\SI{25}{\milli\ampere} & \SI{30}{\milli\ampere} \\ \hline
+    \ac{RS485} driver (MAX485)          & \SI{1}{\milli\ampere}--\SI{5}{\milli\ampere}   & \SI{20}{\milli\ampere} \\ \hline
+    \hline
+    \textbf{Total on \SI{5}{\volt} rail} & $\approx$\SI{265}{\milli\ampere} & $\approx$\SI{550}{\milli\ampere} \\ \hline
+  \end{tabularx}
+\end{table}
+
+The LMR54406 is rated at \SI{600}{\milli\ampere}, leaving a peak margin of approximately
+\SI{50}{\milli\ampere} — functional but tight. \ac{LDO} thermal dissipation at peak load:
+
+\begin{equation}
+  P_{\mathrm{LDO}} = (V_{in} - V_{out}) \cdot I_{load}
+                   = (\SI{5}{\volt} - \SI{3.3}{\volt}) \cdot \SI{0.55}{\ampere}
+                   = \SI{0.935}{\watt}
+  \label{eq:ldo_dissipation}
+\end{equation}
+
+At typical load, dissipation is approximately \SI{0.45}{\watt}.
+Junction temperature in enclosed enclosures shall be monitored accordingly.
+
+\paragraph{Revision~2 — LMR54410 $\rightarrow$ \SI{3.3}{\volt} direct}
+
+\begin{table}[H]
+  \caption{Current budget — Revision~2 (\SI{3.3}{\volt} rail).}
+  \label{tab:current_rev2}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Consumer} & \textbf{Typical} & \textbf{Peak} \\ \hline \hline
+    ESP32-S3-MINI-1-N8 (\ac{WiFi} active) & \SI{240}{\milli\ampere} & \SI{500}{\milli\ampere} \\ \hline
+    128$\cdot$32 \ac{OLED} (SSD1306)  & \SI{15}{\milli\ampere}--\SI{25}{\milli\ampere} & \SI{30}{\milli\ampere} \\ \hline
+    \ac{RS485} driver (MAX3485)         & \SI{1}{\milli\ampere}--\SI{5}{\milli\ampere}   & \SI{20}{\milli\ampere} \\ \hline
+    \hline
+    \textbf{Total on \SI{3.3}{\volt} rail} & $\approx$\SI{265}{\milli\ampere} & $\approx$\SI{550}{\milli\ampere} \\ \hline
+  \end{tabularx}
+\end{table}
+
+The LMR54410 is rated at \SI{1000}{\milli\ampere}, yielding a peak margin of \SI{450}{\milli\ampere}.
+Elimination of the \ac{LDO} stage removes the dissipation of Equation~\eqref{eq:ldo_dissipation}.
+Buck converter efficiency of \SI{80}{\percent}--\SI{90}{\percent} results in substantially lower heat generation compared to Revision~1.
+
+\subsubsection{Output Voltage Setting}
+\label{sec:output_voltage}
+
+The feedback reference voltage of both converters is $V_{ref} = \SI{0.8}{\volt}$.
+The output voltage is set by the external resistor divider:
+
+\begin{equation}
+  V_{out} = V_{ref} \cdot \left(1 + \frac{R_{fbt}}{R_{fbb}}\right)
+  \label{eq:vout}
+\end{equation}
+
+\paragraph{Revision~1 — \SI{5}{\volt} output (LMR54406)}
+
+\begin{table}[H]
+  \caption{Feedback resistors — Revision~1 (\SI{5}{\volt} output).}
+  \label{tab:fb_rev1}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Resistor} & \textbf{Value} & \textbf{Notes} \\ \hline \hline
+    $R_{fbt}$ (top, FB to $V_{out}$) & \SI{115.0}{\kilo\ohm} & E96, \SI{1}{\percent} \\ \hline
+    $R_{fbb}$ (bottom, FB to GND)    & \SI{22.1}{\kilo\ohm}  & E96, \SI{1}{\percent} \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{equation}
+  V_{out} = \SI{0.8}{\volt} \cdot \left(1 + \frac{\SI{115}{\kilo\ohm}}{\SI{22.1}{\kilo\ohm}}\right)
+          = \SI{0.8}{\volt} \cdot 6.203 = \SI{4.963}{\volt}
+  \label{eq:vout_rev1}
+\end{equation}
+
+\paragraph{Revision~2 — \SI{3.3}{\volt} output (LMR54410, datasheet recommended values)}
+
+\begin{table}[H]
+  \caption{Feedback resistors — Revision~2 (\SI{3.3}{\volt} output).}
+  \label{tab:fb_rev2}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Resistor} & \textbf{Value} & \textbf{Notes} \\ \hline \hline
+    $R_{fbt}$ (top, FB to $V_{out}$) & \SI{69.8}{\kilo\ohm} & E96, \SI{1}{\percent} \\ \hline
+    $R_{fbb}$ (bottom, FB to GND)    & \SI{22.1}{\kilo\ohm} & E96, \SI{1}{\percent} \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{equation}
+  V_{out} = \SI{0.8}{\volt} \cdot \left(1 + \frac{\SI{69.8}{\kilo\ohm}}{\SI{22.1}{\kilo\ohm}}\right)
+          = \SI{0.8}{\volt} \cdot 4.158 = \SI{3.327}{\volt}
+  \label{eq:vout_rev2}
+\end{equation}
+
+The result of \SI{3.327}{\volt} is within the ESP32's supply tolerance of \SI{3.0}{\volt}--\SI{3.6}{\volt}.
+The high-impedance divider (approximately \SI{39}{\micro\ampere}) preserves the converter's low quiescent current advantage.
+The datasheet-specified inductor for this configuration is \SI{10}{\micro\henry}.
+
+\subsubsection{Power Indicator \ac{LED} — \SI{3.3}{\volt} Rail}
+\label{sec:power_led_3v3}
+
+A green \ac{LED} with series resistor is connected directly on the \SI{3.3}{\volt} rail as a passive power indicator.
+No \ac{GPIO} is required; the \ac{LED} is permanently active when the rail is energised.
+The design target is \SI{5}{\milli\ampere} ($V_f = \SI{2.0}{\volt}$); the final implementation uses \SI{1.0}{\kilo\ohm} to limit current to approximately \SI{1}{\milli\ampere}.
+
+\begin{equation}
+  R_{LED} = \frac{V_{supply} - V_f}{I_{LED}}
+          = \frac{\SI{3.3}{\volt} - \SI{2.0}{\volt}}{\SI{5}{\milli\ampere}}
+          = \SI{260}{\ohm} \rightarrow \SI{270}{\ohm}
+  \label{eq:rled_3v3}
+\end{equation}
+
+\begin{table}[H]
+  \caption{Power indicator \ac{LED} components — \SI{3.3}{\volt} rail.}
+  \label{tab:led_3v3}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Component} & \textbf{Value} & \textbf{Notes} \\ \hline \hline
+    R\_led & \SI{1.0}{\kilo\ohm} (E24, \SI{1}{\percent}) & Limits \ac{LED} current to $\approx$\SI{1}{\milli\ampere}. \\ \hline
+    LED1   & Green, 0402 or 0603 & $V_f \approx \SI{2.1}{\volt}$ typ.; standard efficiency type only. \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Layout Guidelines}
+\label{sec:layout_notes}
+
+\begin{itemize}
+  \item $R_{fbb}$ shall be placed as close as possible to the FB pin to minimise noise pickup on the feedback node.
+  \item The switching node (SW) copper loop area shall be minimised.
+  \item The input bulk capacitor ($\geq \SI{100}{\micro\farad}$) shall be placed close to the VIN pin.
+\end{itemize}
+
+\subsection{\SI{12}{\volt} Fan Supply}
+\label{sec:12v_rail}
+
+\subsubsection{Use Case and Converter}
+\label{sec:12v_converter}
+
+The \SI{12}{\volt} rail is derived exclusively from the \SI{24}{\volt} industrial input and supplies the cooling fan.
+Since \ac{USB} VBUS is disconnected from the system power network, the \SI{12}{\volt} rail and fan operate only when \SI{24}{\volt} is present.
+The same LMR54410 device used for the \SI{3.3}{\volt} rail (Section~\ref{sec:3v3_converter}) is employed, maintaining a single part number across both converters.
+
+\begin{table}[H]
+  \caption{DC-DC converter parameters — \SI{12}{\volt} fan supply (LMR54410).}
+  \label{tab:converter_12v}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} \\ \hline \hline
+    Device          & LMR54410 (Texas Instruments) \\ \hline
+    Input           & \SI{24}{\volt} \\ \hline
+    Output          & \SI{12}{\volt} \\ \hline
+    Load current    & \SI{90}{\milli\ampere} (fan) \\ \hline
+    Available headroom & \SI{910}{\milli\ampere} spare — within \SI{1}{\ampere} rating \\ \hline
+    Duty cycle      & \SI{50}{\percent} ($12/24$ — nominal operating point) \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Feedback Resistors — \SI{12}{\volt} Output}
+\label{sec:12v_feedback}
+
+Applying Equation~\eqref{eq:vout} with $V_{ref} = \SI{0.8}{\volt}$ and $V_{out} = \SI{12}{\volt}$:
+
+\begin{equation}
+  \frac{R_{fbt}}{R_{fbb}} = \frac{V_{out}}{V_{ref}} - 1 = \frac{12}{0.8} - 1 = 14
+  \label{eq:fb_ratio_12v}
+\end{equation}
+
+\begin{table}[H]
+  \caption{Feedback resistors — \SI{12}{\volt} output (datasheet recommended values).}
+  \label{tab:fb_12v}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Resistor} & \textbf{Value} & \textbf{Notes} \\ \hline \hline
+    $R_{fbt}$ (top, FB to $V_{out}$) & \SI{309}{\kilo\ohm}  & E96, \SI{1}{\percent} \\ \hline
+    $R_{fbb}$ (bottom, FB to GND)    & \SI{22.1}{\kilo\ohm} & E96, \SI{1}{\percent} \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{equation}
+  V_{out} = \SI{0.8}{\volt} \cdot \left(1 + \frac{\SI{309}{\kilo\ohm}}{\SI{22.1}{\kilo\ohm}}\right)
+          = \SI{0.8}{\volt} \cdot 14.981 = \SI{11.985}{\volt} \quad (-\SI{0.1}{\percent})
+  \label{eq:vout_12v}
+\end{equation}
+
+The datasheet-specified inductor for this configuration is \SI{33}{\micro\henry}.
+The higher inductance relative to the \SI{3.3}{\volt} rail (\SI{10}{\micro\henry}) is expected: at \SI{50}{\percent} duty cycle with \SI{24}{\volt} input the converter operates at a larger volt-second product, requiring greater inductance to maintain the same ripple current specification.
+
+\subsubsection{Power Indicator \ac{LED} — \SI{12}{\volt} Rail}
+\label{sec:power_led_12v}
+
+\begin{equation}
+  R_{LED} = \frac{V_{supply} - V_f}{I_{LED}}
+          = \frac{\SI{12}{\volt} - \SI{2}{\volt}}{\SI{5}{\milli\ampere}}
+          = \SI{2}{\kilo\ohm}
+  \label{eq:rled_12v}
+\end{equation}
+
+\begin{table}[H]
+  \caption{Power indicator \ac{LED} components — \SI{12}{\volt} rail.}
+  \label{tab:led_12v}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Component} & \textbf{Value} & \textbf{Notes} \\ \hline \hline
+    R\_led & \SI{10}{\kilo\ohm} (E24, \SI{1}{\percent}) & Limits \ac{LED} current to $\approx$\SI{1}{\milli\ampere}. \\ \hline
+    LED2   & Green, 0402 or 0603 & Same type as LED1. \\ \hline
+  \end{tabularx}
+\end{table}
+
+Since the \SI{12}{\volt} rail is active only with \SI{24}{\volt} industrial input present, LED2
+implicitly indicates that the \SI{24}{\volt} supply is active.
+
+\subsubsection{Four-Wire Fan Control and Monitoring}
+\label{sec:fan_control}
+
+Variable speed control and stall detection are implemented via the standard four-wire fan interface.
+
+\begin{table}[H]
+  \caption{Four-wire fan connector pin assignment.}
+  \label{tab:fan_pins}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|X|}
+    \hline
+    \textbf{Pin} & \textbf{Function} & \textbf{Connection} & \textbf{Notes} \\ \hline \hline
+    1 & GND  & GND              & Common ground \\ \hline
+    2 & \SI{12}{\volt} & \SI{12}{\volt} rail & Power from LMR54410 \\ \hline
+    3 & Tach & \ac{GPIO} (input)  & Open-drain; 2~pulses/revolution \\ \hline
+    4 & \ac{PWM} & \ac{GPIO} (output) & \SI{25}{\kilo\hertz} control signal \\ \hline
+  \end{tabularx}
+\end{table}
+
+Standard four-wire fans accept \SI{3.3}{\volt} logic ($V_{IH} > \SI{2.8}{\volt}$).
+A series resistor protects the ESP32 \ac{GPIO} output:
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0,0) node[left] {GPIO\_PWM} to[R, l=$R_{pwm}$ \SI{22}{\ohm}, o-o] (4,0) node[right] {FAN\_PWM};
+  \end{circuitikz}
+  \caption{\ac{PWM} output protection resistor.}
+  \label{fig:fan_pwm}
+\end{figure}
+
+The tachometer output is open-collector and requires a pull-up to \SI{3.3}{\volt}:
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0,0) node[left] {FAN\_TACH} to[short, o-*] (2,0) to[short, ->] (5,0) node[right] {GPIO\_TACH};
+    \draw (2,0) to[R, l=$R_{tach}$ \SI{10}{\kilo\ohm}] (2,2) node[above] {3V3};
+    \draw (2,0) to[short, -*] (3.5,0) to[C, l=$C_{tach}$ \SI{100}{\pico\farad}] (3.5,-2) node[sground] {};
+    \node[right] at (4, -1.5) {(optional noise filter)};
+  \end{circuitikz}
+  \caption{Tachometer pull-up and noise filter circuit.}
+  \label{fig:fan_tach}
+\end{figure}
+
+\subsection{ESP32-S3-MINI-1-N8 Supporting Hardware}
+\label{sec:mcu_support}
+
+The ESP32-S3-MINI-1-N8 module requires several supporting circuits that are handled internally on
+the XIAO board but must be implemented explicitly on a custom \ac{PCB}.
+
+\subsubsection{Power Supply Decoupling}
+\label{sec:decoupling}
+
+\begin{table}[H]
+  \caption{VCC decoupling capacitors for the ESP32-S3-MINI-1-N8 module.}
+  \label{tab:decoupling}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Component} & \textbf{Value} & \textbf{Placement} \\ \hline \hline
+    C\_bulk   & \SI{10}{\micro\farad} (\SI{6.3}{\volt}) & Close to module VCC pin \\ \hline
+    C\_bypass & \SI{100}{\nano\farad} (0402)         & As close as possible to VCC pin \\ \hline
+  \end{tabularx}
+\end{table}
+
+Both capacitors are mandatory.
+The ESP32's internal regulators generate high-frequency switching noise; inadequate decoupling causes unstable operation and \ac{WiFi} performance degradation.
+
+\subsubsection{EN (Enable / Reset) Circuit}
+\label{sec:reset_circuit}
+
+The EN pin must be held high for normal operation.
+An RC network ensures a clean reset voltage slope; a momentary pushbutton discharges the network to trigger a reset.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0,2) node[above] {3V3} to[R, l=$R_{en}$ \SI{10}{\kilo\ohm}, o-*] (0,0);
+    \draw (0,0) to[short, ->] (2,0) node[right] {EN (module pin)};
+    \draw (0,0) to[C, l=$C_{en}$ \SI{100}{\nano\farad}] (0,-2) node[sground] {};
+    \draw (0,0) to[short, *-] (-2,0) to[nopb, l_=SW\_RESET] (-2,-2) node[sground] {};
+  \end{circuitikz}
+  \caption{EN pin pull-up and reset circuit.}
+  \label{fig:reset_circuit}
+\end{figure}
+
+\begin{table}[H]
+  \caption{EN circuit components.}
+  \label{tab:reset_components}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Component} & \textbf{Value} & \textbf{Purpose} \\ \hline \hline
+    R\_en    & \SI{10}{\kilo\ohm} & Pull-up to \SI{3.3}{\volt} \\ \hline
+    C\_en    & \SI{100}{\nano\farad} & RC filter; ensures clean reset voltage slope \\ \hline
+    SW\_RESET & Momentary NO & Pulls EN low, triggering reset \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Boot Strapping Pins}
+\label{sec:bootstrap}
+
+Strapping pins are sampled at reset to determine boot mode.
+Incorrect logic levels prevent firmware upload or cause boot loops.
+
+\begin{table}[H]
+  \caption{Strapping pin requirements for the ESP32-S3-MINI-1-N8.}
+  \label{tab:strapping}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|X|}
+    \hline
+    \textbf{Pin} & \textbf{Required Level} & \textbf{Circuit} \\ \hline \hline
+    GPIO0 (BOOT)     & HIGH = normal; LOW = download & \SI{10}{\kilo\ohm} pull-up + SW\_BOOT to GND \\ \hline
+    GPIO3            & HIGH                          & \SI{10}{\kilo\ohm} pull-up to \SI{3.3}{\volt} \\ \hline
+    GPIO45, GPIO46   & LOW preferred                 & \SI{10}{\kilo\ohm} pull-down to GND \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0,2) node[above] {3V3} to[R, l=$R_{boot}$ \SI{10}{\kilo\ohm}, o-*] (0,0);
+    \draw (0,0) to[short, ->] (2,0) node[right] {GPIO0 (BOOT)};
+    \draw (0,0) to[nopb, l=SW\_BOOT] (0,-2) node[sground] {};
+  \end{circuitikz}
+  \caption{BOOT strapping pin circuit.}
+  \label{fig:boot_circuit}
+\end{figure}
+
+The manual programming sequence (without auto-reset circuit) is as follows:
+
+\begin{enumerate}
+  \item Press and hold SW\_BOOT (GPIO0 $\rightarrow$ LOW).
+  \item Press and release SW\_RESET (EN pulse $\rightarrow$ reset).
+  \item Release SW\_BOOT — the module boots into download mode.
+  \item Flash firmware via \ac{USB} or \ac{UART}.
+  \item Press SW\_RESET to reboot into normal application mode.
+\end{enumerate}
+
+With native \ac{USB}, the esptool auto-reset sequence (RTS/DTR) operates automatically over the \ac{USB} connection; manual button operation is only required for \ac{UART} flashing or where auto-reset is not wired.
+
+\subsubsection{\ac{USB} Interface and \ac{ESD} Protection}
+\label{sec:usb_programming}
+
+The ESP32-S3-MINI-1-N8 supports native \ac{USB} (no external \ac{USB}-\ac{UART} bridge required).
+
+\begin{table}[H]
+  \caption{\ac{USB} \ac{PHY} pin assignment.}
+  \label{tab:usb_pins}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Pin} & \textbf{Function} \\ \hline \hline
+    GPIO19 & USB D$-$ \\ \hline
+    GPIO20 & USB D$+$ \\ \hline
+  \end{tabularx}
+\end{table}
+
+\ac{ESD} protection is mandatory on the D$+$/D$-$ lines.
+The ESP32-S3 \ac{GPIO} pins carry no internal \ac{ESD} protection on the \ac{USB} lines; a plug/unplug event or cable discharge can permanently damage the \ac{USB} \ac{PHY}.
+
+\begin{table}[H]
+  \caption{\ac{ESD} protection — \ac{TVS} diode array requirements.}
+  \label{tab:esd_requirements}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Parameter} & \textbf{Requirement} \\ \hline \hline
+    Clamping voltage        & $\leq \SI{5.5}{\volt}$ \\ \hline
+    Capacitance per line    & $< \SI{2}{\pico\farad}$ \\ \hline
+    \ac{ESD} rating         & IEC~61000-4-2, $\pm\SI{8}{\kilo\volt}$ contact \\ \hline
+    Lines protected         & D$+$, D$-$ \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+  \caption{Recommended \ac{TVS} diode array devices for \ac{USB} \ac{ESD} protection.}
+  \label{tab:tvs_parts}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|l|l|X|}
+    \hline
+    \textbf{Part} & \textbf{Manufacturer} & \textbf{Package} & \textbf{$C_{per\,line}$} & \textbf{Notes} \\ \hline \hline
+    PRTR5V0U2X     & NXP                & SOT-363  & \SI{0.35}{\pico\farad} & Dual-line clamp \\ \hline
+    USBLC6-2SC6    & STMicroelectronics & SOT-23-6 & \SI{1.0}{\pico\farad}  & Widely available \\ \hline
+    TPD2E2U06DRLR  & Texas Instruments  & SOT-563  & \SI{0.4}{\pico\farad}  & Compact \\ \hline
+  \end{tabularx}
+\end{table}
+
+The \ac{TVS} array shall be placed as close as possible to the \ac{USB} connector, before signal
+traces reach the module.
+
+\subsubsection{\ac{PCB} Antenna Keep-Out Zone}
+\label{sec:antenna_keepout}
+
+The onboard \ac{PCB} antenna of the ESP32-S3-MINI-1-N8 requires a copper-free keep-out zone beneath
+and around it. Violations degrade \ac{WiFi} range.
+
+\begin{table}[H]
+  \caption{\ac{PCB} antenna keep-out requirements.}
+  \label{tab:antenna_keepout}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Rule} & \textbf{Value} \\ \hline \hline
+    No copper under antenna area             & As defined in datasheet \\ \hline
+    No ground plane under antenna            & Required \\ \hline
+    Metal object clearance from antenna edge & $\geq \SI{15}{\milli\metre}$ \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{RS-485 Interface}
+\label{sec:rs485}
+
+A \SI{3.3}{\volt} \ac{RS485} transceiver (MAX3485 or SN65HVD72) is employed.
+The \SI{5}{\volt} MAX485 is not compatible with the \SI{3.3}{\volt} logic levels of the ESP32-S3 and shall not be used.
+
+\begin{table}[H]
+  \caption{\ac{RS485} signal and \ac{GPIO} pin assignment.}
+  \label{tab:rs485_pins}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|l|X|}
+    \hline
+    \textbf{Signal} & \textbf{\ac{GPIO} Pin} & \textbf{Function} \\ \hline \hline
+    RO (Receiver Output)    & GPIO5 & \ac{UART} RX \\ \hline
+    DI (Driver Input)       & GPIO4 & \ac{UART} TX \\ \hline
+    DE/\={RE} (Driver Enable) & GPIO6 & Direction control: HIGH = transmit, LOW = receive \\ \hline
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (3, -2) rectangle (5.5, 2);
+    \node at (4.25, 1.75) {\small MAX3485};
+    \node[right] at (3, 1) {DI};
+    \node[right] at (3, 0) {RO};
+    \node[right] at (3, -0.75) {DE};
+    \node[right] at (3, -1.25) {$\overline{\text{RE}}$};
+    \node[left]  at (5.5, 0.5) {A};
+    \node[left]  at (5.5, -0.5) {B};
+    \draw (0, 1) node[left] {GPIO4 (TX)} to[short, o-] (1.5, 1) to[short, ->] (3, 1);
+    \draw (0, 0) node[left] {GPIO5 (RX)} to[short, o-] (1.5, 0) to[short, <-] (3, 0);
+    \draw (0, -1) node[left] {GPIO6 (DE)} to[short, o-*] (2, -1);
+    \draw (2, -1) |- (2.5, -0.75) to[short, ->] (3, -0.75);
+    \draw (2, -1) |- (2.5, -1.25) to[short, ->] (3, -1.25);
+    \draw (5.5, 0.5) to[short, -o] (7.5, 0.5) node[right] {D$+$ (Connector)};
+    \draw (5.5, -0.5) to[short, -o] (7.5, -0.5) node[right] {D$-$ (Connector)};
+  \end{circuitikz}
+  \caption{RS-485 transceiver connection diagram.}
+  \label{fig:rs485_circuit}
+\end{figure}
+
+\subsection{Temperature Sensing}
+\label{sec:temp_sensing}
+
+\subsubsection{Sensor Selection}
+\label{sec:temp_sensor}
+
+The DS18B20 digital temperature sensor provides remote temperature sensing on the front \ac{PCB} power section.
+This sensor communicates over the \ac{OWI} protocol, which supports extended cable runs and reduces wiring to a single data line.
+
+\begin{table}[H]
+  \caption{DS18B20 temperature sensor electrical characteristics.}
+  \label{tab:ds18b20_specs}
+  \centering
+  \begin{tabularx}{\textwidth}{|X|X|}
+    \hline
+    \textbf{Parameter} & \textbf{Value} \\ \hline \hline
+    Interface    & \ac{OWI} (Dallas 1-Wire) \\ \hline
+    Accuracy     & $\pm\SI{0.5}{\degreeCelsius}$ (from $-\SI{10}{\degreeCelsius}$ to $+\SI{85}{\degreeCelsius}$) \\ \hline
+    Range        & $-\SI{55}{\degreeCelsius}$ to $+\SI{125}{\degreeCelsius}$ \\ \hline
+    Resolution   & \SI{9}{\bit} to \SI{12}{\bit} (\SI{0.0625}{\degreeCelsius} steps) \\ \hline
+    Supply       & \SI{3.0}{\volt} to \SI{5.5}{\volt} \\ \hline
+    Address      & Unique 64-bit ROM ID \\ \hline
+    Package      & TO-92, SO-8, or waterproof probe \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Minimum Circuit}
+\label{sec:ds18b20_circuit}
+
+The DS18B20 requires a single pull-up resistor on the data line (DQ) to the power rail (VCC).
+While parasitic power mode is supported, the RLCV4 employs a standard three-wire connection for maximum reliability during high-temperature monitoring.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[european]
+    \draw (0, 2) node[left] {3V3} to[short, o-*] (2, 2)
+          to[R, l=$R_{pu}$ \SI{4.7}{\kilo\ohm}] (2, 0)
+          to[short, -o] (4, 0) node[right] {DQ (DS18B20 Pin 2)};
+    \draw (0, 0) node[left] {GPIO\_TEMP} to[short, o-*] (2, 0);
+    \draw (2, 2) to[short, -o] (4, 2) node[right] {VDD (DS18B20 Pin 3)};
+    \draw (0, -1) node[left] {GND} to[short, o-o] (4, -1) node[right] {GND (DS18B20 Pin 1)};
+  \end{circuitikz}
+  \caption{DS18B20 minimum connection circuit.}
+  \label{fig:ds18b20_circuit}
+\end{figure}
+The DS18B20 sensor (SO-8 or TO-92 package) is located on the front \ac{PCB} (\ac{MCPCB}) near the primary heat source.
+The \SI{4.7}{\kilo\ohm} pull-up resistor ($R_{pu}$) is located on the main control \ac{PCB}.
+
+The aluminium substrate of the \ac{MCPCB} spreads heat rapidly; sensor placement near the primary heat source minimises thermal response time.
+
+\subsubsection{\ac{OWI} Cable Length Guidelines}
+\label{sec:onewire_cable}
+
+\begin{table}[H]
+  \caption{\ac{OWI} cable length guidance for the DS18B20 remote sensor.}
+  \label{tab:onewire_cable}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|}
+    \hline
+    \textbf{Cable length} & \textbf{Expected behaviour} \\ \hline \hline
+    $< \SI{5}{\metre}$      & Standard \SI{4.7}{\kilo\ohm} pull-up is sufficient for reliable communication. \\ \hline
+    \SI{5}{\metre}--\SI{25}{\metre} & Use a lower value pull-up (\SI{2.2}{\kilo\ohm}) to overcome cable capacitance. \\ \hline
+    $> \SI{25}{\metre}$     & Use shielded twisted pair cable; consider an active \ac{OWI} bus driver. \\ \hline
+  \end{tabularx}
+\end{table}

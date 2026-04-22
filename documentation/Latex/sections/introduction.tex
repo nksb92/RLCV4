@@ -1,0 +1,21 @@
+\section{Introduction}
+\label{sec:introduction}
+
+The RLCV4 is an open-source DIY lighting controller that receives \ac{DMX}512 signals and drives \ac{LED} luminaires and effects systems.
+The system is implemented on a custom \ac{PCB} centred on the ESP32-S3-MINI-1-N8 \ac{MCU} module, which integrates a dual-core Xtensa LX7 processor, \SI{8}{\mega\byte} of embedded flash, and a \SI{2.4}{\giga\hertz} 802.11b/g/n radio for wireless configuration and monitoring. \\
+
+Power is derived exclusively from a \SI{24}{\volt} \ac{DC} supply.
+Two synchronous buck converters (LMR54410, Texas Instruments) step the input voltage down to \SI{3.3}{\volt} for the \ac{MCU} and peripherals, and to \SI{12}{\volt} for the four-wire cooling fan.
+The \SI{24}{\volt} rail is protected against inductive transients by a \ac{TVS} diode network at the board input (Section~\ref{sec:input_protection}). \\
+
+\ac{DMX}512 data is received via an \ac{RS485} line driver (MAX3485) and decoded by the ESP32-S3's \ac{UART} peripheral.
+The decoded channel values drive two configurable \ac{LED} output stages: an addressable \ac{LED} strip interface (e.g.\ WS2812B/WS2815) controlled via a single \ac{GPIO} data line, and a three-channel \ac{RGB} \ac{PWM} output through \ac{MOSFET} drivers for analogue \ac{LED} strips.
+A \ac{USB}-C connector provides firmware programming and serial debugging access; the VBUS line is intentionally disconnected from the board power network, so the \SI{24}{\volt} supply must be present for \ac{USB} enumeration.
+An \ac{I2C} bus connects the \ac{MCU} to a 128$\times$32 \ac{OLED} display (SSD1306) for local status indication.
+Ambient temperature is monitored by a DS18B20 digital sensor on a \ac{OWI} bus.
+Fan speed is regulated by a \SI{25}{\kilo\hertz} \ac{PWM} output signal, and stall detection is performed by reading the tachometer pulse stream on a \ac{GPIO} input. \\
+
+The RLCV4 is the successor to the RLCV3, which was based on the XIAO ESP32-C3 development module and employed a two-stage power chain (\SI{5}{\volt} buck converter followed by a linear \ac{LDO}).
+The RLCV4 replaces both stages with a single LMR54410 buck converter delivering \SI{3.3}{\volt} directly to a custom-\ac{PCB}-mounted ESP32-S3-MINI-1-N8.
+This document covers the design rationale, component selection, and firmware architecture of the RLCV4.
+Figure~\ref{fig:hw_architecture} illustrates the top-level hardware architecture.

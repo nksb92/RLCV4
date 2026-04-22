@@ -1,0 +1,172 @@
+\documentclass[12pt,a4paper,titlepage]{article}
+
+\pdfminorversion=7
+\setlength{\headheight}{14.5pt}
+
+\usepackage{mathptmx}
+\usepackage[skip=15pt]{caption}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{circuitikz}
+\usetikzlibrary{positioning, fit, backgrounds, calc}
+
+\usepackage{xcolor}
+\definecolor{border}{HTML}{ff5500}
+
+\usepackage{minted}
+\usepackage{tcolorbox}
+\tcbuselibrary{breakable}
+\usepackage{etoolbox}
+\BeforeBeginEnvironment{minted}{\begin{tcolorbox}[colback=white, colframe=border, boxrule=0.4mm, arc=5px, breakable]}
+\AfterEndEnvironment{minted}{\end{tcolorbox}}
+\BeforeBeginEnvironment{circuitikz}{\begin{tcolorbox}[colback=white, colframe=border, boxrule=0.4mm, arc=5px, center upper]}
+\AfterEndEnvironment{circuitikz}{\end{tcolorbox}}
+\newenvironment{longlisting}{\captionsetup{type=listing}}{}
+\setminted{
+  style=arduino,
+  linenos,
+  numbersep=5pt,
+  frame=leftline,
+  framesep=2mm,
+  breaklines=true,
+  xleftmargin=10pt
+}
+\renewcommand{\listingscaption}{Sourcecode}
+\renewcommand{\listoflistingscaption}{List of Sourcecodes}
+
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{longtable}
+\graphicspath{ {./graphics/} }
+\usepackage[left=1.50cm, right=1.50cm, top=3.00cm, bottom=2.00cm]{geometry}
+\usepackage[colorlinks=false, pdfborder={0 0 0}]{hyperref}
+\usepackage[numbers,square,sort]{natbib}
+\bibliographystyle{unsrt}
+\usepackage{float}
+\counterwithin{figure}{section}
+\counterwithin{table}{section}
+\counterwithin{listing}{section}
+\usepackage{multirow}
+\usepackage{pmboxdraw}
+\usepackage{fancyhdr}
+\usepackage[per-mode=fraction, exponent-product=\cdot, locale=DE]{siunitx}
+\usepackage[printonlyused]{acronym}
+\usepackage{multicol}
+\usepackage{titlesec}
+\newcommand{\sectionbreak}{\clearpage}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}
+  {\thesection}{1em}{}
+  [{\color{border}\titlerule[1.5pt]}]
+
+\hyphenation{STMicro-elec-tron-ics}
+\parindent 0pt
+\numberwithin{equation}{section}
+\begin{document}
+\pagenumbering{alph}
+
+\begin{titlepage}
+  \centering
+  \vspace*{0.5cm}
+  {\color{border}\rule{\linewidth}{1.5pt}}\par
+  \vspace{4cm}
+  {\fontsize{40}{48}\selectfont\bfseries RLCV4\par}
+  \vspace{0.9cm}
+  {\LARGE Design Reference Manual\par}
+  \vspace{1.4cm}
+  {\color{border}\rule{0.4\linewidth}{1.5pt}}\par
+  \vspace{1.4cm}
+  {\large\itshape LED Lighting Controller\,—\,Revision~4\par}
+  \vfill
+  {\large Niko Kassubek\par}
+  \vspace{0.5cm}
+  {\normalsize\today\par}
+  \vspace{2cm}
+  {\color{border}\rule{\linewidth}{1.5pt}}\par
+\end{titlepage}
+\pagenumbering{roman}
+
+\tableofcontents
+\newpage
+
+\addcontentsline{toc}{section}{\listfigurename}
+\listoffigures
+\newpage
+\addcontentsline{toc}{section}{\listtablename}
+\listoftables
+\newpage
+\addcontentsline{toc}{section}{\listoflistingscaption}
+\listoflistings
+\newpage
+
+\section*{Abbreviations}
+\begin{multicols}{2}
+\begin{acronym}[MCPCB]
+  \acro{ADC}{Analog-to-Digital Converter}
+  \acro{API}{Application Programming Interface}
+  \acro{CIE}{Commission Internationale de l'\'Eclairage}
+  \acro{CRC}{Cyclic Redundancy Check}
+  \acro{DAC}{Digital-to-Analog Converter}
+  \acro{DC}{Direct Current}
+  \acro{DMA}{Direct Memory Access}
+  \acro{DMX}{Digital Multiplex}
+  \acro{EEPROM}{Electrically Erasable Programmable Read-Only Memory}
+  \acro{ESD}{Electrostatic Discharge}
+  \acro{FIFO}{First-In, First-Out}
+  \acro{FSM}{Finite State Machine}
+  \acro{GPIO}{General Purpose Input/Output}
+  \acro{HSV}{Hue, Saturation, Value}
+  \acro{HTTPS}{Hypertext Transfer Protocol Secure}
+  \acro{I2C}{Inter-Integrated Circuit}
+  \acro{IP}{Internet Protocol}
+  \acro{ISR}{Interrupt Service Routine}
+  \acro{LDO}{Low-Dropout Regulator}
+  \acro{LED}{Light-Emitting Diode}
+  \acro{LUT}{Look-Up Table}
+  \acro{MCU}{Microcontroller Unit}
+  \acro{MCPCB}{Metal Core Printed Circuit Board}
+  \acro{mDNS}[mDNS]{Multicast Domain Name System}
+  \acro{MOSFET}{Metal-Oxide-Semiconductor Field-Effect Transistor}
+  \acro{NC}{Not Connected}
+  \acro{NVM}{Non-Volatile Memory}
+  \acro{NVS}{Non-Volatile Storage}
+  \acro{OLED}{Organic Light-Emitting Diode}
+  \acro{OTA}[OTA]{Over-the-Air}
+  \acro{OWI}{One-Wire Interface}
+  \acro{PCB}{Printed Circuit Board}
+  \acro{PHY}{Physical Layer}
+  \acro{PSU}{Power Supply Unit}
+  \acro{PWM}{Pulse Width Modulation}
+  \acro{RAM}{Random Access Memory}
+  \acro{RDM}{Remote Device Management}
+  \acro{RGB}{Red, Green, Blue}
+  \acro{RMT}[RMT]{Remote Control Transceiver}
+  \acro{RS485}[RS-485]{Recommended Standard 485}
+  \acro{RTC}{Real-Time Clock}
+  \acro{RTOS}{Real-Time Operating System}
+  \acro{sACN}[sACN]{Streaming Architecture for Control Networks}
+  \acro{SPI}{Serial Peripheral Interface}
+  \acro{TVS}{Transient Voltage Suppressor}
+  \acro{UI}{User Interface}
+  \acro{UART}{Universal Asynchronous Receiver-Transmitter}
+  \acro{UDP}{User Datagram Protocol}
+  \acro{USB}{Universal Serial Bus}
+  \acro{WiFi}[Wi-Fi]{Wireless Fidelity}
+\end{acronym}
+\end{multicols}
+\newpage
+\pagenumbering{arabic}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% SECTIONS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\input{sections/introduction}
+\input{sections/requirements}
+\input{sections/system_architecture}
+\input{sections/hardware_design}
+\input{sections/software_architecture}
+
+\end{document}

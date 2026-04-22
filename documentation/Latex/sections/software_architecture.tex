@@ -1,0 +1,958 @@
+\section{Software Architecture}
+\label{sec:software_architecture}
+
+The firmware is built upon a non-blocking, event-driven architecture.
+This approach avoids busy-waiting and blocking delays, ensuring responsive \ac{MCU} performance even when handling complex \ac{LED} animations, rotary encoder inputs, or network communications.
+
+\subsection{Dual-Core Task Partitioning}
+\label{sec:dual_core}
+
+The ESP32-S3 integrates two Xtensa~LX7 processing cores.
+The firmware exploits this by statically partitioning work at initialisation: each core runs a dedicated FreeRTOS task pinned via \texttt{xTask\-Create\-Pinned\-To\-Core()}, so the real-time peripheral path and the latency-tolerant user interface never compete for the same execution context.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Core 0 block
+    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 0.0) rectangle (5.4, 5.4);
+    \node[anchor=north, font=\bfseries] at (2.7, 5.4) {Core 0 — Real-Time};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 4.5) {WLAN Stack};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 3.4) {Art-Net Parser};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 2.3) {DMX-512 Receiver};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 1.2) {LED Controller (RMT)};
+
+    % Shared config block
+    \node[draw, fill=white, minimum width=3.0cm, minimum height=1.8cm, align=center, rounded corners] (cfg) at (8.0, 2.7) {\small\texttt{lighting\_config\_t}\\\small\texttt{portMUX\_TYPE}};
+
+    % Core 1 block
+    \draw[dashed, thick, fill=gray!5, rounded corners] (10.8, 0.0) rectangle (16.2, 5.4);
+    \node[anchor=north, font=\bfseries] at (13.5, 5.4) {Core 1 — User Interface};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 4.5) {Event Manager};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 3.6) {Timer Manager};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 2.7) {Rotary Encoder / Button};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 1.8) {OLED Display (I\textsuperscript{2}C)};
+    \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 0.9) {NVS Flash Storage};
+
+    % Bidirectional arrows through shared config
+    \draw[latex-latex, thick] (5.4, 2.7) -- (cfg.west);
+    \draw[latex-latex, thick] (cfg.east) -- (10.8, 2.7);
+  \end{circuitikz}
+  \caption{Static task partitioning across the two ESP32-S3 cores.}
+  \label{fig:dual_core_arch}
+\end{figure}
+
+\paragraph{Core 0 — Real-Time Peripherals}
+Core~0 hosts all tasks that must execute with minimal and predictable latency.
+The ESP-IDF Wi-Fi driver is bound to Core~0 by default, making it the natural home for the entire network-facing path.
+Art-Net \ac{UDP} packets are received and parsed directly on this core.
+The \ac{DMX}-512 receiver services the incoming \ac{UART} stream and writes the working frame buffer without blocking.
+Computed pixel data is driven to the \ac{LED} string via the \ac{RMT} peripheral, also from Core~0, to guarantee consistent frame timing.
+No blocking calls or indefinite waits are permitted on this core.
+
+\paragraph{Core 1 — User Interface}
+Core~1 handles all tasks that tolerate occasional scheduling jitter.
+The Event Manager and Timer Manager (described in the following subsections) both execute here, along with debounced rotary encoder and button handling.
+\ac{OLED} display updates are issued over \ac{I2C} exclusively from Core~1, so the variable latency of \ac{I2C} transactions never affects the real-time path.
+Non-volatile parameter reads and writes to the ESP-IDF \ac{NVS} flash \ac{API} are similarly confined to this core.
+
+\subsubsection{Shared Configuration and Spinlock Protection}
+\label{sec:shared_config}
+
+Both cores must read and occasionally write a small set of operating parameters: the current operating mode, \ac{DMX} start address, and Art-Net universe.
+These are consolidated into a single \texttt{lighting\_config\_t} struct, keeping the shared data surface minimal and explicit.
+
+Calling \texttt{portENTER\_CRITICAL()} without an argument only masks interrupts on the \emph{calling} core and provides no protection against simultaneous access from the other core.
+The correct dual-core primitive is \texttt{portMUX\_TYPE}, which wraps the ESP32-S3 hardware spinlock.
+When one core acquires the lock, the other core busy-waits until it is released.
+Both cores must therefore hold the lock for the shortest possible time — in this implementation, strictly to a struct copy with no processing inside the critical section.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+// Shared declaration (single translation unit)
+portMUX_TYPE config_mux = portMUX_INITIALIZER_UNLOCKED;
+lighting_config_t lighting_config;	// protected by config_mux
+
+// Core 1 — writing a new configuration
+void config_set(const lighting_config_t* src) {
+    portENTER_CRITICAL(&config_mux);
+    lighting_config = *src;	// struct copy only, no processing
+    portEXIT_CRITICAL(&config_mux);
+}
+
+// Core 0 — reading a snapshot before processing a frame
+lighting_config_t config_get(void) {
+    lighting_config_t snap;
+    portENTER_CRITICAL(&config_mux);
+    snap = lighting_config; // struct copy only, no processing
+    portEXIT_CRITICAL(&config_mux);
+    return snap;
+}
+\end{minted}
+\caption{Dual-core safe access to \texttt{lighting\_config\_t} using \texttt{portMUX\_TYPE}.}
+\label{lst:spinlock_config}
+\end{longlisting}
+
+\begin{tcolorbox}[colback=gray!8, colframe=gray!50, boxrule=0.4mm, arc=5px, title=\textbf{Planned Enhancement — Queue-Based Configuration Updates}]
+As firmware complexity grows, a more robust pattern is for Core~1 to \emph{own} the authoritative copy of \texttt{lighting\_config\_t} and post change requests to Core~0 via a minimal single-element FreeRTOS queue.
+Core~0 applies the update at a safe point between rendered frames, removing the spinlock from the real-time path entirely and eliminating the theoretical stall on Core~0 caused by a Core~1 write occurring mid-frame.
+The spinlock approach is retained for now because configuration changes are infrequent and the critical section is provably restricted to a single struct copy.
+\end{tcolorbox}
+
+\subsection{Event Manager}
+\label{sec:event_manager}
+
+The Event Manager decouples event generation from event processing on Core~1.
+Event sources — the rotary encoder \ac{ISR}, the button debounce handler, and the Timer Manager — push events into a lightweight array-based ring buffer.
+The Core~1 main loop polls this buffer and passes each event to the \texttt{process\_event()} handler, which drives the menu \ac{FSM}.
+
+Each event consists of an \texttt{event\_id\_t} identifier and an optional \SI{32}{\bit} parameter.
+The ring buffer capacity is sufficient for the expected maximum burst rate of user inputs and timer expirations; no priority discrimination is required at the current firmware complexity level, since time-critical work (network reception, \ac{LED} output) is handled entirely on Core~0.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Event sources
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (enc) at (0, 3.0) {Rotary Encoder ISR};
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (btn) at (0, 1.8) {Button Handler};
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (tim) at (0, 0.6) {Timer Manager};
+
+    % Ring buffer
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=2.6cm, align=center, rounded corners] (rb) at (5.0, 1.8) {Ring Buffer\\\small(array-based FIFO)};
+
+    % Menu engine
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (menu) at (10.0, 1.8) {Menu \ac{FSM}};
+
+    % Arrows
+    \draw[-latex, thick, rounded corners] (enc.east) -- ++(0.6, 0) |- (rb.west);
+    \draw[-latex, thick] (btn.east) -- (rb.west);
+    \draw[-latex, thick, rounded corners] (tim.east) -- ++(0.6, 0) |- (rb.west);
+    \draw[-latex, thick] (rb.east) -- (menu.west);
+  \end{circuitikz}
+  \caption{Event Manager data flow on Core~1.}
+  \label{fig:event_manager_arch}
+\end{figure}
+
+The \texttt{process\_event()} handler evaluates the current menu depth and state, then routes the event to the appropriate response: an \ac{OLED} display refresh, a \ac{NVS} parameter write, or a \texttt{lighting\_config\_t} update via the spinlock accessor described in Section~\ref{sec:shared_config}.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+void process_event(const event_t* event) {
+    uint8_t depth = main_sw.get_deepness();
+    uint8_t state = main_sw.get_current();
+
+    switch (event->id) {
+        case EVT_ENCODER_STEP:
+            menu_navigate(event->param);   // signed step value
+            break;
+        case EVT_BUTTON_CLICK:
+            menu_select(depth, state);
+            break;
+        case EVT_DISPLAY_REFRESH:
+            oled_render();
+            break;
+        // Additional event handling...
+    }
+}
+\end{minted}
+\caption{Event dispatch into the menu \ac{FSM}.}
+\label{lst:process_event}
+\end{longlisting}
+
+\subsection{Software Timer Manager}
+\label{sec:timer_manager}
+
+On Core~1, the \texttt{SoftTimerManager} class handles all non-blocking timing requirements.
+It stores a fixed-size static array of timer entries and scans them on every iteration of the Core~1 main loop, comparing each entry's deadline against the current \texttt{millis()} value.
+No hardware timer or \ac{RTOS} timer resource is consumed; the \texttt{millis()} counter is the sole time reference.
+
+When a timer expires, it pushes a predefined \texttt{event\_id\_t} into the Event Manager ring buffer.
+The Core~1 event loop then picks up the event and forwards it to \texttt{process\_event()} in the same way as any input event.
+For example, the display standby timer pushes \texttt{EVT\_DISPLAY\_STANDBY} when it expires, and the menu \ac{FSM} reacts by blanking the \ac{OLED}.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Timer Manager block
+    \draw[dashed, thick, fill=gray!5, rounded corners] (2.8, 0.5) rectangle (8.6, 3.5);
+    \node[anchor=north] at (5.7, 3.5) {\textbf{Timer Manager}};
+
+    % Input
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (loop) at (0, 2.0) {Core~1 Main Loop};
+
+    % Internal
+    \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (arr) at (5.7, 2.6) {Static Timer Array};
+    \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (cmp) at (5.7, 1.4) {Expiry Check (\texttt{millis})};
+
+    % Output
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (rb) at (11.2, 2.0) {Event Ring Buffer};
+
+    % Arrows
+    \draw[-latex, thick] (loop.east) -- (2.8, 2.0);
+    \draw[-latex, thick] (arr.south) -- (cmp.north);
+    \draw[-latex, thick, rounded corners] (cmp.east) -- ++(0.6, 0) |- (8.7, 2.0) -- (rb.west);
+  \end{circuitikz}
+  \caption{Software Timer Manager data flow — static array polled each Core~1 loop iteration.}
+  \label{fig:timer_manager_arch}
+\end{figure}
+
+\begin{table}[H]
+  \caption{Software timer operational modes.}
+  \label{tab:timer_modes}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|}
+    \hline
+    \textbf{Mode} & \textbf{Description} \\ \hline \hline
+    Periodic & Timer restarts automatically after posting its event. Used for animations and cyclic updates. \\ \hline
+    One-shot & Timer halts after expiration. Used for timeouts, such as the display standby or fan cooldown. \\ \hline
+  \end{tabularx}
+\end{table}
+
+
+\subsection{Menu Engine}
+\label{sec:menu_engine}
+
+The menu engine implements a data-driven, tree-based user interface on Core~1 with zero dynamic memory allocation.
+All menu structure is encoded in \texttt{const} arrays of structs that the linker places directly in the ESP32-S3's flash memory; no heap allocations are performed at runtime, and no \ac{RAM} is consumed beyond a single pointer to the currently active page.
+
+\subsubsection{Static Data Model}
+\label{sec:menu_data_model}
+
+The engine operates on two mutually referential types: \texttt{menu\_page\_t} and \texttt{menu\_item\_t}.
+A page represents one visible layer of the menu hierarchy; an item represents one selectable entry within a page.
+Each item carries a text label, a pointer to a flash-resident icon bitmap, a type discriminator, and a union target interpreted by the engine according to the discriminator.
+
+\begin{table}[H]
+  \caption{Menu item types and their engine behaviour.}
+  \label{tab:menu_item_types}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|}
+    \hline
+    \textbf{Type} & \textbf{Engine Behaviour} \\ \hline \hline
+    \texttt{ITEM\_SUBMENU}     & Navigates to the page pointed to by \texttt{target.submenu}. \\ \hline
+    \texttt{ITEM\_ACTION}      & Calls the void function referenced by \texttt{target.action\_cb}. \\ \hline
+    \texttt{ITEM\_EDIT\_UINT16}& Enters an in-place value editor bounded by \texttt{min\_val} and \texttt{max\_val}; the encoder wraps the value modularly within the defined range. \\ \hline
+    \texttt{ITEM\_BACK}        & Returns to the page referenced by the current page's \texttt{parent} pointer. \\ \hline
+  \end{tabularx}
+\end{table}
+
+Editable numeric parameters use the \texttt{edit\_uint16\_t} sub-struct, which holds a direct pointer to the target global variable alongside its permitted bounds.
+Incrementing past \texttt{max\_val} wraps the value back to \texttt{min\_val}, and decrementing below \texttt{min\_val} wraps forward to \texttt{max\_val}.
+
+\begin{longlisting}
+\begin{minted}{c}
+// Forward declarations — required because menu_item_t and menu_page_t reference each other
+typedef struct menu_page_t menu_page_t;
+typedef struct menu_item_t menu_item_t;
+
+// Icon wrapper — stores bitmap dimensions, rendering offset, and flash data pointer
+typedef struct {
+    uint8_t width;
+    uint8_t height;
+    int8_t  x_offset;
+    int8_t  y_offset;
+    const uint8_t* data;
+} icon_t;
+
+// Item type discriminator
+typedef enum {
+    ITEM_SUBMENU,      // Opens a deeper menu page
+    ITEM_ACTION,       // Executes a void callback
+    ITEM_EDIT_UINT16,  // In-place numeric editor with bounds
+    ITEM_BACK          // Returns to the parent page
+} menu_item_type_t;
+
+// Bounds descriptor for editable uint16 parameters
+typedef struct {
+    uint16_t* val_ptr;   // Pointer to the variable being edited
+    uint16_t  min_val;
+    uint16_t  max_val;
+} edit_uint16_t;
+\end{minted}
+\caption{Supporting type definitions: icon wrapper, item type discriminator, and bounds descriptor.}
+\label{lst:menu_types_supporting}
+\end{longlisting}
+
+\begin{longlisting}
+\begin{minted}{c}
+// Menu item — one selectable entry within a page
+struct menu_item_t {
+    const char*      label;
+    const icon_t*    icon;
+    menu_item_type_t type;
+    union {
+        menu_page_t* submenu;
+        void        (*action_cb)(void);
+        edit_uint16_t edit;
+    } target;
+};
+
+// Menu page — one visible layer of the hierarchy
+struct menu_page_t {
+    const char*  title;
+    menu_page_t* parent;    // NULL for the top-level page
+    uint8_t      num_items;
+    menu_item_t* items;
+};
+\end{minted}
+\caption{Composite types: \texttt{menu\_item\_t} and \texttt{menu\_page\_t}.}
+\label{lst:menu_types_composite}
+\end{longlisting}
+
+\subsubsection{Menu Tree Instantiation}
+\label{sec:menu_tree}
+
+Menu trees are built bottom-up in C: leaf pages must be defined before the parent pages that reference them.
+The top-level page carries a \texttt{NULL} parent pointer; all other pages carry a pointer to their direct ancestor, enabling \texttt{ITEM\_BACK} navigation without maintaining a runtime stack.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Main page node
+    \node[draw, fill=white, minimum width=3.0cm, minimum height=0.8cm, rounded corners] (main) at (1.5, 2.0) {\texttt{page\_main}};
+
+    % Layer-2 nodes
+    \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (artnet) at (7.5, 3.2) {\texttt{page\_artnet}};
+    \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (dmxp)   at (7.5, 2.0) {\texttt{page\_dmx}};
+    \node[draw, dashed, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (reb) at (7.5, 0.8) {\small\texttt{action\_reboot\_device}};
+
+    % Navigation arrows
+    \draw[-latex, thick, rounded corners] (main.east) -- ++(0.5,0) |- (artnet.west)
+      node[near end, above, font=\scriptsize] {SUBMENU};
+    \draw[-latex, thick] (main.east) -- (dmxp.west)
+      node[midway, above, font=\scriptsize] {SUBMENU};
+    \draw[-latex, thick, rounded corners] (main.east) -- ++(0.5,0) |- (reb.west)
+      node[near end, below, font=\scriptsize] {ACTION};
+  \end{circuitikz}
+  \caption{Two-level menu tree for the RLCV4 firmware.}
+  \label{fig:menu_tree}
+\end{figure}
+
+\begin{longlisting}
+\begin{minted}{c}
+// Global parameters referenced by the edit items
+volatile uint16_t g_dmx_address = 1;
+volatile uint16_t g_artnet_universe = 0;
+
+// Action callbacks
+void action_save_to_nvs(void)   { /* write to NVS */ }
+void action_reboot_device(void) { /* esp_restart() */ }
+
+extern menu_page_t page_main;
+
+// ---- Layer 2: Art-Net submenu ----
+menu_item_t items_artnet[] = {
+    { "Universe", &icon_artnet, ITEM_EDIT_UINT16,
+      .target.edit = { (uint16_t*)&g_artnet_universe, 0, 32767 } },
+    { "Save NVS", &icon_save,   ITEM_ACTION,
+      .target.action_cb = action_save_to_nvs },
+    { "Back",     &icon_back,   ITEM_BACK,
+      .target = {0} }
+};
+menu_page_t page_artnet = { "Art-Net Setup", &page_main, 3, items_artnet };
+
+// ---- Layer 2: DMX submenu ----
+menu_item_t items_dmx[] = {
+    { "Address",  &icon_dmx,  ITEM_EDIT_UINT16,
+      .target.edit = { (uint16_t*)&g_dmx_address, 1, 512 } },
+    { "Save NVS", &icon_save, ITEM_ACTION,
+      .target.action_cb = action_save_to_nvs },
+    { "Back",     &icon_back, ITEM_BACK,
+      .target = {0} }
+};
+menu_page_t page_dmx = { "DMX Setup", &page_main, 3, items_dmx };
+
+// ---- Layer 1: Main menu ----
+menu_item_t items_main[] = {
+    { "Art-Net", &icon_artnet, ITEM_SUBMENU,
+      .target.submenu = &page_artnet },
+    { "DMX512",  &icon_dmx,   ITEM_SUBMENU,
+      .target.submenu = &page_dmx },
+    { "Reboot",  &icon_save,  ITEM_ACTION,
+      .target.action_cb = action_reboot_device }
+};
+menu_page_t page_main = { "Main Menu", NULL, 3, items_main };
+\end{minted}
+\caption{Bottom-up instantiation of a two-level menu tree in flash memory.}
+\label{lst:menu_tree}
+\end{longlisting}
+
+\subsection{Non-Volatile Parameter Storage}
+\label{sec:nvs_storage}
+
+To persist configuration parameters across power cycles, the firmware utilizes the ESP-IDF's native Non-Volatile Storage (\ac{NVS}) \ac{API}.
+This subsystem operates on a dedicated partition in the internal flash memory and provides a wear-leveling, key-value storage mechanism that is robust against unexpected power loss during write operations.
+This approach is superior to direct \ac{EEPROM} emulation, which lacks these safeguards.
+All parameter persistence is handled on Core~1 to avoid impacting real-time tasks. \\
+
+The save operation is triggered exclusively by a double-click of the rotary encoder button while navigating within a submenu.
+When triggered, the firmware gathers all configurable runtime states into a single structure.
+An 8-bit \ac{CRC} is then calculated across this data structure.
+Finally, the structure and its \ac{CRC} are committed to flash as a single binary object. \\
+
+On system boot, the firmware performs the reverse process to load the configuration.
+It attempts to read the configuration from \ac{NVS}.
+If it's found, the firmware recalculates the \ac{CRC} on the retrieved data portion and compares it to the stored \ac{CRC} value. \\
+
+If the checksums match, the parameters are considered valid and are loaded into the active runtime configuration.
+If the \ac{NVS} configuration is not found, is corrupted, or the \ac{CRC} check fails, the firmware discards the invalid data and loads a factory default configuration.
+This ensures the device always starts in a known-good, operational state.
+
+\begin{longlisting}
+\begin{minted}{c}
+// Container for storing configuration data and its integrity check
+struct nvs_payload_t {
+    config_t config_data; // All runtime parameters
+    uint8_t  crc;         // CRC calculated over config_data
+};
+
+// Simplified logic for loading configuration from NVS on boot
+void load_config_from_nvs(void) {
+    nvs_payload_t payload;
+
+    // Attempt to read the entire payload blob from NVS.
+    // nvs_read_block() is a placeholder for the actual NVS API call.
+    if (nvs_read_block(&payload, sizeof(payload))) {
+
+        // config was read, now validate it.
+        uint8_t calculated_crc = crc8_compute(
+            (uint8_t*)&payload.config_data,
+            sizeof(payload.config_data)
+        );
+
+        if (calculated_crc == payload.crc) {
+            // CRC matches, apply the loaded configuration.
+            apply_runtime_config(payload.config_data);
+            return; // Success
+        }
+    }
+
+    // If read failed, blob was wrong size, or CRC was invalid,
+    // apply factory defaults to ensure a safe state.
+    apply_factory_defaults();
+}
+\end{minted}
+\caption{Simplified logic for reading and validating parameters from \ac{NVS} on boot.}
+\label{lst:nvs_read_logic}
+\end{longlisting}
+
+\subsection{Network Lighting Protocol Receiver}
+\label{sec:net_receiver}
+
+Both Art-Net and \ac{sACN} (ANSI~E1.31) transport \ac{DMX}-512 channel data over standard \ac{IP} networks as \ac{UDP} datagrams.
+Despite differing in packet format, universe numbering, and connection-management semantics, both protocols deliver an identical payload: an ordered array of up to \num{512} 8-bit channel values assigned to a numbered universe.
+The receiver subsystem is designed around a protocol-agnostic shared data layer that exploits this common ground.
+Either protocol driver writes incoming channel data into the same double-buffered universe store; the lighting engine consumes that data without any knowledge of which protocol produced it.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Protocol Receivers
+    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 2.6) rectangle (5.2, 5.8);
+    \node[anchor=north, font=\bfseries\small] at (2.6, 5.8) {Protocol Receivers};
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (artnet) at (2.6, 4.7) {Art-Net Receiver};
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (sacn)   at (2.6, 3.5) {sACN Receiver};
+    % Network Manager below the box
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (netmgr) at (2.6, 1.3) {Network Manager};
+    % Shared Data Layer
+    \draw[dashed, thick, fill=gray!5, rounded corners] (5.9, 0.4) rectangle (11.1, 5.8);
+    \node[anchor=north, font=\bfseries\small] at (8.5, 5.8) {Shared Data Layer};
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (buf0) at (8.5, 4.7) {Primary Frame Buffer};
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (buf1) at (8.5, 3.5) {Secondary Frame Buffer};
+    \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (cfg)  at (8.5, 1.3) {\texttt{universe\_config\_t}};
+    % Output
+    \node[draw, fill=white, minimum width=3.6cm, minimum height=0.9cm, rounded corners, font=\small] (light) at (14.3, 4.3) {Lighting Engine};
+    \node[draw, fill=white, minimum width=3.6cm, minimum height=0.8cm, rounded corners, font=\small] (led)   at (14.3, 2.7) {LED Output};
+    % Data: receivers -> buffers (straight horizontal, both sides at same y)
+    \draw[-latex, thick] (artnet.east) -- (buf0.west);
+    \draw[-latex, thick] (sacn.east)   -- (buf1.west);
+    % Data: buffers -> lighting engine
+    \draw[-latex, thick, rounded corners=4pt] (buf0.east) -- ++(0.25,0) |- (light.west);
+    \draw[-latex, thick, rounded corners=4pt] (buf1.east) -- ++(0.2,0) |- (light.west);
+    % Config -> lighting engine
+    \draw[-latex, thick, rounded corners=4pt] (cfg.east) -- ++(1.3,0) |- (light.west);
+    % Lighting -> LED
+    \draw[-latex, thick] (light.south) -- (led.north);
+    % Network Manager -> Protocol Receivers box (event control, dashed)
+    \draw[-latex, dashed, thick] (netmgr.north) -- (2.6, 2.6);
+  \end{circuitikz}
+  \caption{Network lighting protocol receiver architecture.}
+  \label{fig:net_receiver_arch}
+\end{figure}
+
+As shown in Figure~\ref{fig:net_receiver_arch}, solid arrows show the data path; the dashed arrow indicates event-based connection-state signalling from the Network Manager to the protocol receivers.
+Both receivers share the same frame buffers and configuration structure; the lighting engine is fully decoupled from the active protocol.
+
+\subsubsection{Protocol Overview}
+\label{sec:net_proto_overview}
+
+Table~\ref{tab:proto_comparison} summarises the operational properties of the two supported protocols.
+Both deliver \num{512} \ac{DMX} channel values per universe as the innermost payload, making the shared data layer straightforward to realise.
+The differences — source priority in \ac{sACN}, the mandatory data-loss timeout, and multicast subscription — are encapsulated entirely within the respective receiver classes and are invisible to the lighting engine.
+
+\begin{table}[H]
+  \caption{Comparison of Art-Net and \ac{sACN} protocol properties relevant to the receiver implementation.}
+  \label{tab:proto_comparison}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|X|}
+    \hline
+    \textbf{Property} & \textbf{Art-Net} & \textbf{sACN (ANSI E1.31)} \\ \hline \hline
+    Transport          & UDP unicast / broadcast          & UDP unicast / multicast \\ \hline
+    Port               & 6454                             & 5568 \\ \hline
+    Universe range     & 0–32767                          & 1–63999 \\ \hline
+    Channels/universe  & 512                              & 512 \\ \hline
+    Source priority    & None                             & Per-source, 0–200 (default 100) \\ \hline
+    Multi-source merge & Not specified                    & Single-winner, priority-based \\ \hline
+    Data-loss handling & None                             & Mandatory \SI{2.5}{\second} timeout \\ \hline
+    Subscription       & Unicast or broadcast             & Multicast group per universe \\ \hline
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Shared Data Layer}
+\label{sec:net_shared_data}
+
+The shared data layer consists of two components.
+\texttt{universe\_config\_t} encodes the user-configurable mapping between network universes and \ac{LED} segments.
+\texttt{dmx\_universe\_buf} is a double-buffered \ac{DMX} frame store that both protocol receivers write into.
+
+\paragraph{Universe Configuration}
+\texttt{universe\_config\_t} is written by Core~1 whenever the operator modifies the universe, start channel, or segment count, and is read by Core~0 (protocol receivers and lighting engine) as an atomic snapshot via the \texttt{portMUX\_TYPE} spinlock accessor described in Section~\ref{sec:shared_config}.
+All boundary calculations that determine whether a segment's channel range overflows into a second universe are expressed as inline member functions, ensuring a single formula is applied consistently at every call site.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+static constexpr uint16_t DMX_ADDRESS_COUNT = 512; // valid: 1–512
+
+struct universe_config_t {
+    uint16_t start_universe; // first universe carrying segment data
+    uint16_t start_channel;  // DMX start address (1–512)
+    uint16_t num_segments;   // number of addressed LED segments
+
+    // 3 RGB channels per segment + 1 global dimmer channel
+    uint16_t used_channels() const { return num_segments * 3u + 1u; }
+
+    bool spans_two_universes() const {
+        return (start_channel + used_channels() - 1u) > DMX_ADDRESS_COUNT;
+    }
+
+    uint16_t end_universe() const {
+        return start_universe + (spans_two_universes() ? 1u : 0u);
+    }
+
+    uint16_t end_channel() const {
+        uint16_t last = start_channel + used_channels() - 1u;
+        return spans_two_universes() ? last - DMX_ADDRESS_COUNT : last;
+    }
+};
+\end{minted}
+\caption{\texttt{universe\_config\_t}: universe mapping and boundary computation.}
+\label{lst:universe_config}
+\end{longlisting}
+
+\paragraph{Double-Buffered Frame Store}
+\texttt{dmx\_universe\_buf} holds one \ac{DMX} universe as a double buffer.
+The write context — the Wi-Fi task that fires the network reception callback — always writes into the \emph{back buffer}.
+The read context — the Core~0 output routine — always reads from the \emph{front buffer}.
+After a complete frame has been written, the roles of the two buffers are exchanged by storing a new value into a single \texttt{std::atomic<uint8\_t>}.
+This store maps to one native instruction and is therefore indivisible: the output routine either observes the old index or the new index, never a partial state.
+The same byte encodes both the front-buffer index (bit~0) and a ready flag (bit~7), eliminating the need for a separate signalling variable.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    % Writer
+    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 2.6) rectangle (4.8, 5.2);
+    \node[anchor=north, font=\bfseries\small] at (2.4, 5.2) {Network Callback};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (wrt)  at (2.4, 4.5) {Write to Back Buffer};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (swap) at (2.4, 3.3) {Atomic Store (swap)};
+    % Buffers
+    \draw[dashed, thick, fill=gray!5, rounded corners] (5.6, 0.3) rectangle (10.4, 5.2);
+    \node[anchor=north, font=\bfseries\small] at (8.0, 5.2) {Double Buffer};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b0) at (8.0, 4.5) {Buffer 0 (512 B)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b1) at (8.0, 3.3) {Buffer 1 (512 B)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=1.0cm, rounded corners, font=\small, align=center] (st) at (8.0, 1.5) {\texttt{atomic<uint8\_t>}\\state};
+    % Reader
+    \draw[dashed, thick, fill=gray!5, rounded corners] (11.2, 2.6) rectangle (16.0, 5.2);
+    \node[anchor=north, font=\bfseries\small] at (13.6, 5.2) {Output Routine};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (rd)  at (13.6, 4.5) {Atomic Load (index)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (out) at (13.6, 3.3) {Drive LED String};
+    % Arrows
+    \draw[-latex, thick] (wrt.south)  -- (swap.north);
+    \draw[-latex, thick] (rd.south)   -- (out.north);
+    \draw[-latex, thick, rounded corners=4pt] (wrt.east)  -- ++(0.4,0) |- (b0.west);
+    \draw[-latex, thick, rounded corners=4pt] (swap.east) -- ++(0.9,0) |- (st.west);
+    \draw[-latex, thick, rounded corners=4pt] (st.east)   -- ++(0.9,0) |- (rd.west);
+    \draw[-latex, thick, rounded corners=4pt] (b1.east)   -- ++(0.4,0) |- (out.west);
+  \end{circuitikz}
+  \caption{Double-buffered frame store operation.}
+  \label{fig:dmx_double_buffer}
+\end{figure}
+
+As shown in Figure~\ref{fig:dmx_double_buffer}, the network callback writes \num{512} channel bytes into the back buffer and then atomically promotes it to the front by storing the new index and ready flag in a single instruction.
+The output routine reads the atomic state to locate the front buffer and drives the \ac{LED} string from it without acquiring any lock.
+A C++11 release-acquire pair on the atomic state establishes the necessary happens-before relationship.
+\texttt{std::memory\_order\_release} in the callback guarantees that the completed \texttt{memcpy} is globally visible before the index swap is observed by any other execution context.
+\texttt{std::memory\_order\_acquire} in the output routine guarantees that the buffer contents are read after the corresponding swap is observed.
+On the Xtensa~LX7, both operations compile to a single native load or store instruction with no additional memory fence.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+class dmx_universe_buf {
+public:
+    static constexpr uint16_t CHANNEL_COUNT = DMX_ADDRESS_COUNT;
+
+private:
+    uint8_t frame_[2][CHANNEL_COUNT] = {};  // index 0 = DMX address 1
+    std::atomic<uint8_t> state_{0}; // bit 0: front-buffer index; bit 7: ready flag
+
+    static constexpr uint8_t READY_BIT = 0x80u;
+
+public:
+    // Called from the network reception callback.
+    // Copies |count| channel bytes into the back buffer (DMX address 1 at index 0)
+    // and atomically promotes the back buffer to the front.
+    void write(const uint8_t* src, uint16_t count) {
+        uint8_t back = (state_.load(std::memory_order_relaxed) & 1u) ^ 1u;
+        memcpy(frame_[back], src,
+               std::min(count, static_cast<uint16_t>(CHANNEL_COUNT)));
+        state_.store(static_cast<uint8_t>(back | READY_BIT),
+                     std::memory_order_release);
+    }
+
+    // Called from the lighting engine.
+    // Returns a pointer to the front buffer if a new frame is available,
+    // or nullptr if no frame has arrived since the last call.
+    // The channel byte for DMX address N is located at index N-1.
+    const uint8_t* consume() {
+        uint8_t s = state_.load(std::memory_order_acquire);
+        if (!(s & READY_BIT)) return nullptr;
+        state_.store(static_cast<uint8_t>(s & ~READY_BIT),
+                     std::memory_order_relaxed);
+        return frame_[s & 1u];
+    }
+};
+\end{minted}
+\caption{\texttt{dmx\_universe\_buf}: double-buffered \ac{DMX} frame store with atomic index swap.}
+\label{lst:dmx_universe_buf}
+\end{longlisting}
+
+The channel byte for \ac{DMX} address~$N$ is stored at array index~$N-1$, so address~1 maps to index~0 and address~512 maps to index~511.
+
+\subsubsection{Network Manager}
+\label{sec:net_manager}
+
+The Network Manager is the sole component permitted to call \texttt{WiFi.begin()} or \texttt{WiFi.disconnect()}.
+It implements a four-state \ac{FSM} and polls \texttt{WiFi.status()} once per Core~0 loop iteration.
+State transitions post events to the Event Manager; protocol receivers react to \texttt{EVT\_WIFI\_CONNECTED} by calling \texttt{begin()} on their respective stacks, and to \texttt{EVT\_WIFI\_DISCONNECTED} by suspending packet processing.
+On entry into \texttt{RECONNECTING}, a configurable back-off timer prevents rapid successive \texttt{WiFi.begin()} calls during a link failure.
+
+\begin{figure}[H]
+  \centering
+  \begin{circuitikz}[>=latex]
+    \node[draw, fill=white, minimum width=2.6cm, minimum height=0.8cm, rounded corners] (idle)   at (0.0,  1.5) {\texttt{IDLE}};
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (conn)   at (5.0,  1.5) {\texttt{CONNECTING}};
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (up)     at (10.5, 1.5) {\texttt{CONNECTED}};
+    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (reconn) at (10.5, 0.0) {\texttt{RECONNECTING}};
+
+    \draw[-latex, thick] (idle.east) -- (conn.west)
+      node[midway, above, font=\scriptsize] {start()};
+    \draw[-latex, thick] (conn.east) -- (up.west)
+      node[midway, above, font=\scriptsize] {WL\_CONNECTED};
+    \draw[-latex, thick] (up.south) -- (reconn.north)
+      node[midway, right, font=\scriptsize] {link lost};
+    \draw[-latex, thick, rounded corners=4pt] (reconn.west) -- ++(-1.5,0) |- (up.west);
+    \node[font=\scriptsize, right] at (7.5, 0.75) {WL\_CONNECTED};
+    \draw[-latex, thick, rounded corners=4pt] (up.north) -- ++(0,0.6) -| (idle.north);
+    \node[font=\scriptsize, above] at (5.25, 2.5) {stop()};
+  \end{circuitikz}
+  \caption{Network Manager \ac{FSM}.}
+  \label{fig:wifi_fsm}
+\end{figure}
+
+\texttt{stop()} is valid from any active state; the arc from \texttt{CONNECTED} is shown for clarity.
+On repeated \texttt{RECONNECTING} cycles, \texttt{WiFi.begin()} is re-issued after the back-off delay elapses.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+enum class wifi_state_t { IDLE, CONNECTING, CONNECTED, RECONNECTING };
+
+class network_manager {
+private:
+    wifi_state_t state_        = wifi_state_t::IDLE;
+    uint32_t     reconnect_at_ = 0;
+    const char*  ssid_;
+    const char*  password_;
+
+    static constexpr uint32_t RECONNECT_DELAY_MS = 5000u;
+
+public:
+    network_manager(const char* ssid, const char* password)
+        : ssid_(ssid), password_(password) {}
+
+    void start() {
+        WiFi.begin(ssid_, password_);
+        state_ = wifi_state_t::CONNECTING;
+    }
+
+    void stop() {
+        WiFi.disconnect();
+        WiFi.mode(WIFI_OFF);
+        state_ = wifi_state_t::IDLE;
+        event_manager.post(EVT_WIFI_STOPPED);
+    }
+
+    // Polled once per Core 0 main-loop iteration.
+    void poll() {
+        const bool linked = (WiFi.status() == WL_CONNECTED);
+        switch (state_) {
+            case wifi_state_t::CONNECTING:
+                if (linked) { state_ = wifi_state_t::CONNECTED;
+                              event_manager.post(EVT_WIFI_CONNECTED); }
+                break;
+            case wifi_state_t::CONNECTED:
+                if (!linked) { state_        = wifi_state_t::RECONNECTING;
+                               reconnect_at_ = millis() + RECONNECT_DELAY_MS;
+                               event_manager.post(EVT_WIFI_DISCONNECTED); }
+                break;
+            case wifi_state_t::RECONNECTING:
+                if (linked) { state_ = wifi_state_t::CONNECTED;
+                              event_manager.post(EVT_WIFI_CONNECTED); }
+                else if (millis() >= reconnect_at_) {
+                    WiFi.begin(ssid_, password_);
+                    reconnect_at_ = millis() + RECONNECT_DELAY_MS;
+                }
+                break;
+            default: break;
+        }
+    }
+};
+\end{minted}
+\caption{Network Manager implementation.}
+\label{lst:network_manager}
+\end{longlisting}
+
+Connection recovery is handled autonomously: after \texttt{EVT\_WIFI\_DISCONNECTED} is posted, the Manager re-issues \texttt{WiFi.begin()} every \SI{5}{\second} until the link is restored, then posts \texttt{EVT\_WIFI\_CONNECTED} so the active protocol receiver can resume.
+
+\subsubsection{Art-Net Receiver}
+\label{sec:artnet_receiver}
+
+The Art-Net receiver wraps the ArtnetWifi library and is responsible for universe filtering and frame dispatch.
+On initialisation it registers a lambda with the library as the ArtDMX callback; the library invokes this lambda whenever a valid ArtDMX packet arrives on \ac{UDP} port~6454.
+The callback reads a spinlock snapshot of \texttt{universe\_config\_t}, compares the incoming universe number against the configured start and end universes, and writes the payload into the appropriate frame buffer.
+The receiver holds no protocol state of its own; all Art-Net framing and sequencing is handled by the library.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+class artnet_receiver {
+private:
+    ArtnetWifi        artnet_;
+    dmx_universe_buf* primary_;
+    dmx_universe_buf* secondary_;
+
+public:
+    void init(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
+        primary_   = primary;
+        secondary_ = secondary;
+        artnet_.setArtDmxCallback(
+            [this](uint16_t universe, uint16_t length,
+                   uint8_t /*seq*/, uint8_t* data) {
+                on_dmx_frame(universe, length, data);
+            });
+    }
+
+    void begin() { artnet_.begin(); } // called on EVT_WIFI_CONNECTED
+    void poll()  { artnet_.read();  } // called once per Core 0 loop iteration
+
+private:
+    void on_dmx_frame(uint16_t universe, uint16_t length, const uint8_t* data) {
+        // Snapshot avoids holding the spinlock across the memcpy inside write().
+        const universe_config_t cfg = config_get();
+
+        if (universe == cfg.start_universe) {
+            primary_->write(data, length);
+        } else if (cfg.spans_two_universes() && universe == cfg.end_universe()) {
+            secondary_->write(data, length);
+        }
+    }
+};
+\end{minted}
+\caption{Art-Net receiver implementation.}
+\label{lst:artnet_receiver}
+\end{longlisting}
+
+The lambda captures \texttt{this} so the stateless closure has access to the buffer pointers.
+Taking a spinlock snapshot before calling \texttt{write()} confines the critical section to a struct copy, keeping the spinlock hold time independent of the \num{512}-byte \texttt{memcpy}.
+
+\subsubsection{sACN Receiver}
+\label{sec:sacn_receiver}
+
+The \ac{sACN} receiver implements ANSI~E1.31 reception and adds three capabilities beyond the Art-Net receiver: multicast subscription, single-source selection with priority-based takeover, and mandatory data-loss detection.
+
+\paragraph{Multicast Subscription}
+\ac{sACN} transmitters address each universe through an \ac{IP} multicast group.
+The multicast address for universe~$u$ is \texttt{239.255.(u >> 8).(u \& 0xFF)}.
+On \texttt{begin()}, the receiver joins the multicast group for \texttt{start\_universe} and, when the channel range spans two universes, the group for \texttt{end\_universe} as well.
+Group membership is refreshed whenever the user changes the universe configuration.
+
+\paragraph{Source Selection and Priority}
+\ac{sACN} permits multiple transmitters to address the same universe simultaneously, each carrying a priority value in the range 0–200 (default 100).
+The receiver maintains one \emph{active source} identified by its 16-byte component identifier.
+Packets from the active source are always accepted; packets from a different source are accepted only if they carry a strictly higher priority, at which point that source becomes the new active source.
+This single-winner policy avoids per-slot priority merging while meeting the baseline interoperability requirement of ANSI~E1.31.
+
+\paragraph{Data-Loss Detection}
+ANSI~E1.31 §6.7.1 requires that a receiver treat the absence of valid packets for \SI{2.5}{\second} as a data-loss condition.
+The timestamp of each accepted packet is recorded; the elapsed time is evaluated on every poll call.
+On timeout, the active source record is cleared and \texttt{EVT\_SACN\_DATA\_LOSS} is posted to the Event Manager.
+The Core~1 event handler responds with a hold-last-look policy, preserving the last rendered frame and preventing an abrupt blackout.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+struct sacn_source_t {
+    uint8_t  cid[16];           // 16-byte component identifier (UUID-style)
+    uint8_t  priority;
+    uint32_t last_packet_ms;
+};
+
+class sacn_receiver {
+private:
+    WiFiUDP udp_;
+    dmx_universe_buf* primary_;
+    dmx_universe_buf* secondary_;
+    sacn_source_t source_     = {};
+    bool has_source_ = false;
+
+    static constexpr uint16_t E131_PORT = 5568u;
+    static constexpr uint32_t DATA_LOSS_MS = 2500u;
+    static constexpr uint16_t MIN_PKT_LEN = 127u; // 126-byte header + 1 data byte
+
+public:
+    void begin(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
+        primary_   = primary;
+        secondary_ = secondary;
+        udp_.begin(E131_PORT);
+        const universe_config_t cfg = config_get();
+        join_multicast(cfg.start_universe);
+        if (cfg.spans_two_universes()) join_multicast(cfg.end_universe());
+    }
+
+    void stop() { udp_.stop(); has_source_ = false; }
+
+    void poll() {
+        check_data_loss();
+        const int len = udp_.parsePacket();
+        if (len < MIN_PKT_LEN) return;
+        uint8_t pkt[638];
+        if (udp_.read(pkt, sizeof(pkt)) < MIN_PKT_LEN) return;
+        if (!valid_preamble(pkt)) return;
+
+        const uint16_t universe = (uint16_t(pkt[113]) << 8) | pkt[114];
+        const uint8_t  priority = pkt[108];
+        const uint16_t slots = (uint16_t(pkt[123]) << 8) | pkt[124];
+        const uint8_t* dmx = &pkt[126];  // first channel value; start code excluded
+
+        if (slots < 2u || !accept_source(&pkt[22], priority)) return;
+
+        const universe_config_t cfg = config_get();
+        if (universe == cfg.start_universe)
+            primary_->write(dmx, slots - 1u);
+        else if (cfg.spans_two_universes() && universe == cfg.end_universe())
+            secondary_->write(dmx, slots - 1u);
+    }
+
+private:
+    void join_multicast(uint16_t u) {
+        udp_.beginMulticast(IPAddress(239u, 255u, u >> 8, u & 0xFFu), E131_PORT);
+    }
+
+    bool accept_source(const uint8_t* cid, uint8_t priority) {
+        const uint32_t now = millis();
+        if (!has_source_) {
+            memcpy(source_.cid, cid, 16);
+            source_.priority = priority; source_.last_packet_ms = now;
+            return has_source_ = true;
+        }
+        if (memcmp(source_.cid, cid, 16) == 0) {
+            source_.priority = priority; source_.last_packet_ms = now;
+            return true;
+        }
+        if (priority > source_.priority) {
+            memcpy(source_.cid, cid, 16);
+            source_.priority = priority; source_.last_packet_ms = now;
+            return true;
+        }
+        return false;
+    }
+
+    void check_data_loss() {
+        if (has_source_ && (millis() - source_.last_packet_ms > DATA_LOSS_MS)) {
+            has_source_ = false;
+            event_manager.post(EVT_SACN_DATA_LOSS);
+        }
+    }
+
+    static bool valid_preamble(const uint8_t* p) {
+        if (p[0] != 0x00u || p[1] != 0x10u) return false;
+        static const uint8_t ACN_ID[12] =
+            {0x41,0x53,0x43,0x2D,0x45,0x31,0x2E,0x31,0x37,0x00,0x00,0x00};
+        return memcmp(&p[4], ACN_ID, 12) == 0;
+    }
+};
+\end{minted}
+\caption{\ac{sACN} receiver. \texttt{accept\_source()} implements the single-winner selection policy: it always accepts the known active source and replaces it only when a competing source arrives with strictly higher priority. \texttt{valid\_preamble()} checks the ANSI~E1.31 preamble-size field and the ACN packet identifier, rejecting malformed or non-E1.31 datagrams before any further parsing occurs.}
+\label{lst:sacn_receiver}
+\end{longlisting}
+
+\subsubsection{Lighting Engine Integration}
+\label{sec:net_lighting_integration}
+
+The lighting engine interacts with the shared data layer exclusively through two operations: \texttt{config\_get()} for a spinlock-protected snapshot of \texttt{universe\_config\_t}, and \texttt{dmx\_universe\_buf::consume()} on each frame buffer to retrieve the latest channel data.
+\texttt{consume()} returns \texttt{nullptr} when no new frame has arrived since the last call, allowing the engine to skip rendering entirely and avoid redundant \ac{LED} updates.
+When a channel range spans two universes, the engine waits until both the primary and secondary buffers have delivered a new frame before rendering, ensuring that an \ac{LED} string is never driven with a split-universe mix of an old frame and a new one.
+The function is entirely protocol-agnostic: the data in the buffers may have originated from an Art-Net or an \ac{sACN} packet; the engine cannot and need not distinguish between them.
+
+\begin{longlisting}
+\begin{minted}{cpp}
+void lighting_engine_tick(dmx_universe_buf& primary, dmx_universe_buf& secondary) {
+    const universe_config_t cfg = config_get();
+
+    const uint8_t* pdata = primary.consume();
+    if (!pdata) return;  // no new primary-universe frame
+
+    const uint8_t* sdata = nullptr;
+    if (cfg.spans_two_universes()) {
+        sdata = secondary.consume();
+        if (!sdata) return;  // hold until the secondary universe also arrives
+    }
+
+    const uint16_t pixels_per_seg  = NUM_PIXEL / cfg.num_segments;
+    uint16_t       channel_idx     = cfg.start_channel - 1u;  // DMX address → 0-based
+    uint16_t       led_idx         = 0;
+
+    for (uint16_t seg = 0; seg < cfg.num_segments; ++seg) {
+        // Resolve each channel index against the correct universe buffer.
+        // Indices 0–(DMX_ADDRESS_COUNT-1) map to pdata; overflow maps to sdata.
+        auto ch = [&](uint16_t idx) -> uint8_t {
+            return (idx < DMX_ADDRESS_COUNT) ? pdata[idx] : sdata[idx - DMX_ADDRESS_COUNT];
+        };
+
+        const uint8_t r = ch(channel_idx++);
+        const uint8_t g = ch(channel_idx++);
+        const uint8_t b = ch(channel_idx++);
+
+        // Global dimmer occupies the last channel in the configured range.
+        const uint8_t dim = ch(cfg.end_channel() - 1u + (cfg.start_channel - 1u));
+
+        CRGB color(r, g, b);
+        color.nscale8_video(dim);
+        for (uint16_t px = 0; px < pixels_per_seg; ++px)
+            pixels.setPixelColor(led_idx++, pixels.Color(color.r, color.g, color.b));
+    }
+    pixels.show();
+}
+\end{minted}
+\caption{Lighting engine tick function.}
+\label{lst:lighting_engine_tick}
+\end{longlisting}
+
+The lambda \texttt{ch()} resolves a 0-based channel index against the primary or secondary buffer, transparently handling the universe boundary.
+The function is protocol-agnostic: it does not inspect the origin of the data in the frame buffers.

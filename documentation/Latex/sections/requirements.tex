@@ -1,0 +1,286 @@
+\section{Requirements}
+\label{sec:requirements}
+
+This section defines the requirements for the RLCV4 system at three levels of abstraction.
+System-level requirements describe the observable behaviour of the complete device.
+Hardware, software, and mechanical requirements are derived from the system-level set and specify how each engineering discipline satisfies it.
+
+Each requirement carries a unique identifier of the form \texttt{SYS-xxx}, \texttt{HW-xxx}, \texttt{SW-xxx}, or \texttt{ME-xxx}.
+Derived requirements reference the parent system requirement in the \emph{Traces to} column.
+Requirements marked \textit{[O]} are optional; they represent independent feature extensions and are not required for the device to fulfil its primary purpose.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{System Requirements}
+\label{sec:req_system}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{longtable}{|p{1.8cm}|p{\dimexpr(\linewidth-1.8cm-6\tabcolsep-4\arrayrulewidth)/2\relax}|p{\dimexpr(\linewidth-1.8cm-6\tabcolsep-4\arrayrulewidth)/2\relax}|}
+  \caption{System-level requirements.}\label{tab:req_system} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Rationale} \\ \hline \hline
+  \endfirsthead
+  \caption[]{System-level requirements (continued).} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Rationale} \\ \hline \hline
+  \endhead
+  \hline
+  \endfoot
+    \label{req:sys001}SYS-001 &
+      The system shall operate exclusively from a \SI{24}{\volt} \ac{DC} supply. &
+      Single-rail operation simplifies installation in lighting infrastructure environments. \\ \hline
+    \label{req:sys002}SYS-002 &
+      The system shall receive \ac{DMX}512 control data via an \ac{RS485} physical interface. &
+      \ac{DMX}512 over \ac{RS485} is the standard protocol for theatrical and architectural lighting control. \\ \hline
+    \label{req:sys003}SYS-003 &
+      The system shall receive Art-Net protocol data over an 802.11~b/g/n \ac{WiFi} link. &
+      Wireless Art-Net reception eliminates cabling in installations where a \ac{DMX} run is impractical. \\ \hline
+    \label{req:sys004}SYS-004 &
+      The system shall drive addressable \ac{LED} strips using the WS2812B/WS2815 serial protocol. &
+      Addressable strips are the dominant product type for effects lighting. \\ \hline
+    \label{req:sys005}SYS-005 &
+      The system shall drive analogue \ac{RGB} \ac{LED} strips via three independent \ac{PWM}-controlled high-side outputs. &
+      Analogue strips cover high-power and colour-mixing applications not served by addressable types. \\ \hline
+    \label{req:sys006}SYS-006 &
+      The system shall provide a local user interface for parameter configuration without an external programming tool. &
+      Field configuration must be possible without a laptop or mobile device. \\ \hline
+    \label{req:sys007}SYS-007 &
+      The system shall persist user configuration across power cycles. &
+      Parameters such as \ac{DMX} start address and Art-Net universe must survive a power loss. \\ \hline
+    \label{req:sys008}SYS-008 &
+      The system shall monitor enclosure temperature and regulate cooling-fan speed accordingly. &
+      Elevated ambient temperatures reduce component lifetime; active regulation is required for reliable continuous operation. \\ \hline
+    \label{req:sys009}SYS-009 &
+      The \ac{LED} output stage shall maintain deterministic frame timing independent of \ac{UI} or network activity. &
+      Timing glitches in the output stream cause visible flicker and protocol errors on WS2812B strips. \\ \hline
+    \label{req:sys010}SYS-010 &
+      The system shall support in-circuit firmware updates and serial debug access via a \ac{USB}-C connector. &
+      A standardised programming interface is required for development and field maintenance. \\ \hline
+    \label{req:sys011}SYS-011 &
+      All external connectors shall be mechanically accessible without disassembling the enclosure. &
+      Installation and maintenance must be possible with the board mounted. \\ \hline
+    \label{req:sys012}SYS-012~\textit{[O]} &
+      The system shall provide a \SI{24}{\volt} \ac{DC} power output connector to supply downstream daisy-chained fixtures from the same input rail. &
+      Daisy-chaining eliminates separate power runs to each fixture in a multi-unit installation. \\ \hline
+    \label{req:sys013}SYS-013~\textit{[O]} &
+      The system shall support firmware updates delivered over the 802.11~b/g/n \ac{WiFi} link without physical access to the device (\ac{OTA} update). &
+      \ac{OTA} capability enables field firmware maintenance and bug correction without disassembling the installation. \\ \hline
+    \label{req:sys014}SYS-014~\textit{[O]} &
+      The system shall receive \ac{sACN} (ANSI E1.31) protocol data over the 802.11~b/g/n \ac{WiFi} link. &
+      \ac{sACN} is supported by a broad range of professional lighting consoles alongside Art-Net; dual-protocol reception maximises compatibility without additional hardware. \\ \hline
+    \label{req:sys015}SYS-015~\textit{[O]} &
+      The system shall support \ac{RDM} (ANSI E1.20) bidirectional communication over the \ac{RS485} interface. &
+      \ac{RDM} enables remote address configuration, status reporting, and device discovery from the control console without physical access to the fixture. \\ \hline
+    \label{req:sys016}SYS-016~\textit{[O]} &
+      Upon loss of all active control signals (\ac{DMX}512, Art-Net, \ac{sACN}), the system shall hold the last valid received output frame on all outputs indefinitely until a new valid frame is received. &
+      Holding the last frame prevents unintended output change or blackout caused by a transient control signal interruption. \\ \hline
+    \label{req:sys017}SYS-017~\textit{[O]} &
+      The system shall advertise its presence on the \ac{WiFi} network via \ac{mDNS} and shall respond to Art-Net ArtPoll requests with a valid ArtPollReply packet containing the device name, universe assignment, and \ac{IP} address. &
+      Automatic network discovery eliminates manual addressing when commissioning multiple fixtures on a shared network. \\ \hline
+    \label{req:sys018}SYS-018~\textit{[O]} &
+      The system shall apply a \ac{CIE} 1931 luminance correction curve to all \ac{LED} output values prior to driving the output peripherals. &
+      Perceptually linear dimming is required for professional-quality fade transitions across the full \ac{DMX} control range. \\ \hline
+    \label{req:sys019}SYS-019~\textit{[O]} &
+      The \ac{PWM} base frequency of the analogue \ac{RGB} output stage shall be user-configurable and stored persistently. &
+      Specific \ac{PWM} frequencies are required in camera recording environments and to avoid audible resonance in certain \ac{LED} driver circuits. \\ \hline
+    \label{req:sys020}SYS-020~\textit{[O]} &
+      The system shall implement an onboard effects engine capable of generating \ac{LED} effect data autonomously and distributing it to downstream fixtures via \ac{DMX}512, Art-Net, or \ac{sACN}, without requiring an external lighting controller. &
+      An onboard effects engine enables multi-fixture installations to operate without a dedicated console; one designated master fixture generates and distributes effect data to all slave fixtures over the existing control infrastructure. \\ \hline
+\end{longtable}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Hardware Requirements}
+\label{sec:req_hardware}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{longtable}{|p{1.8cm}|p{\dimexpr\linewidth-5.8cm-6\tabcolsep-4\arrayrulewidth\relax}|p{4cm}|}
+  \caption{Hardware requirements derived from system requirements.}\label{tab:req_hardware} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Traces to} \\ \hline \hline
+  \endfirsthead
+  \caption[]{Hardware requirements (continued).} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Traces to} \\ \hline \hline
+  \endhead
+  \hline
+  \endfoot
+    \label{req:hw001}HW-001 &
+      The \SI{24}{\volt} input rail shall be protected by a \ac{TVS} diode network and bulk capacitance against inductive transients. &
+      SYS-001 \\ \hline
+    \label{req:hw002}HW-002 &
+      A synchronous buck converter shall regulate the \SI{24}{\volt} input to \SI{3.3}{\volt} for the \ac{MCU} and peripherals. &
+      SYS-001 \\ \hline
+    \label{req:hw003}HW-003 &
+      A synchronous buck converter shall regulate the \SI{24}{\volt} input to \SI{12}{\volt} for the cooling fan. &
+      SYS-001, SYS-008 \\ \hline
+    \label{req:hw004}HW-004 &
+      A \SI{3.3}{\volt}-compatible \ac{RS485} transceiver shall be fitted for \ac{DMX}512 signal reception. &
+      SYS-002 \\ \hline
+    \label{req:hw005}HW-005 &
+      The \ac{DMX}512 input shall be terminated at a screw-terminal or \ac{RS485} connector accessible on the board edge. &
+      SYS-002, SYS-011 \\ \hline
+    \label{req:hw006}HW-006 &
+      The \ac{MCU} module shall integrate a \SI{2.4}{\giga\hertz} 802.11~b/g/n radio with a \ac{PCB} antenna; a copper-free keep-out zone shall surround the antenna. &
+      SYS-003 \\ \hline
+    \label{req:hw007}HW-007 &
+      A single \ac{GPIO} output line shall drive the addressable \ac{LED} strip data signal. &
+      SYS-004 \\ \hline
+    \label{req:hw008}HW-008 &
+      Three N-channel \ac{MOSFET} driver stages, one per \ac{RGB} channel, shall switch the \SI{24}{\volt} rail under \ac{MCU} \ac{PWM} control. &
+      SYS-005 \\ \hline
+    \label{req:hw009}HW-009 &
+      An \ac{I2C}-connected 128$\times$32 \ac{OLED} display module (SSD1306) shall indicate operating status on the front panel. &
+      SYS-006 \\ \hline
+    \label{req:hw010}HW-010 &
+      A rotary encoder with integrated push button shall serve as the sole mechanical input device. &
+      SYS-006 \\ \hline
+    \label{req:hw011}HW-011 &
+      A DS18B20 digital temperature sensor shall be connected via an \ac{OWI} bus. &
+      SYS-008 \\ \hline
+    \label{req:hw012}HW-012 &
+      A 4-wire fan connector shall be provided; fan speed shall be controlled by a \SI{25}{\kilo\hertz} \ac{PWM} signal; stall shall be detected via the tachometer input. &
+      SYS-008 \\ \hline
+    \label{req:hw013}HW-013 &
+      A \ac{USB}-C connector shall be provided for firmware programming and serial debug; the VBUS line shall be isolated from the board power network. &
+      SYS-010 \\ \hline
+    \label{req:hw014}HW-014~\textit{[O]} &
+      A \ac{PCB}-mount male \SI{5.5}{\milli\metre}\,$\times$\,\SI{2.1}{\milli\metre} barrel plug connector shall be provided for the \SI{24}{\volt} daisy-chain output; the connector shall be wired to the input rail downstream of the input protection network via a trace rated for the full downstream load current; overcurrent protection is delegated to the upstream \ac{PSU}. &
+      SYS-012 \\ \hline
+    \label{req:hw015}HW-015~\textit{[O]} &
+      The driver-enable and receiver-enable pins of the \ac{RS485} transceiver shall be connected to dedicated \ac{MCU} \ac{GPIO} outputs to permit software-controlled half-duplex direction switching required for \ac{RDM} transmission. &
+      SYS-015 \\ \hline
+\end{longtable}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Software Requirements}
+\label{sec:req_software}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{longtable}{|p{1.8cm}|p{\dimexpr\linewidth-5.8cm-6\tabcolsep-4\arrayrulewidth\relax}|p{4cm}|}
+  \caption{Software requirements derived from system requirements.}\label{tab:req_software} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Traces to} \\ \hline \hline
+  \endfirsthead
+  \caption[]{Software requirements (continued).} \\
+  \hline
+  \textbf{ID} & \textbf{Requirement} & \textbf{Traces to} \\ \hline \hline
+  \endhead
+  \hline
+  \endfoot
+    \label{req:sw001}SW-001 &
+      The firmware shall decode \ac{DMX}512 frames received on the \ac{UART} peripheral on Core~0. &
+      SYS-002 \\ \hline
+    \label{req:sw002}SW-002 &
+      The firmware shall parse Art-Net ArtDmx \ac{UDP} packets received over the \ac{WiFi} interface on Core~0. &
+      SYS-003 \\ \hline
+    \label{req:sw003}SW-003 &
+      The \ac{WiFi} driver shall be pinned exclusively to Core~0. &
+      SYS-003, SYS-009 \\ \hline
+    \label{req:sw004}SW-004 &
+      Addressable \ac{LED} strip output shall be generated using the \ac{RMT} peripheral for bit-accurate timing. &
+      SYS-004, SYS-009 \\ \hline
+    \label{req:sw005}SW-005 &
+      Three independent \ac{PWM} channels shall be generated for analogue \ac{RGB} output via the LEDC peripheral. &
+      SYS-005 \\ \hline
+    \label{req:sw006}SW-006 &
+      The firmware shall implement a data-driven, tree-based menu \ac{FSM} navigated by rotary encoder and button events on Core~1. &
+      SYS-006 \\ \hline
+    \label{req:sw007}SW-007 &
+      All \ac{OLED} display updates shall execute exclusively on Core~1 to prevent \ac{I2C} bus contention. &
+      SYS-006 \\ \hline
+    \label{req:sw008}SW-008 &
+      User-configurable parameters shall be stored in \ac{NVS} flash and restored unconditionally on startup. &
+      SYS-007 \\ \hline
+    \label{req:sw009}SW-009 &
+      The firmware shall read the DS18B20 sensor and regulate fan speed via \ac{PWM} duty cycle as a function of measured temperature. &
+      SYS-008 \\ \hline
+    \label{req:sw010}SW-010 &
+      A fan stall condition, detected via absence of tachometer pulses, shall trigger a safe-state response. &
+      SYS-008 \\ \hline
+    \label{req:sw011}SW-011 &
+      All real-time peripherals (\ac{DMX}, Art-Net, \ac{LED} output) shall execute on Core~0; all \ac{UI} tasks shall execute on Core~1. &
+      SYS-009 \\ \hline
+    \label{req:sw012}SW-012 &
+      Shared configuration data written by Core~1 and read by Core~0 shall be protected by a hardware spinlock (\texttt{portMUX\_TYPE}). &
+      SYS-009 \\ \hline
+    \label{req:sw013}SW-013 &
+      No blocking calls or indefinite waits shall be permitted on Core~0. &
+      SYS-009 \\ \hline
+    \label{req:sw014}SW-014~\textit{[O]} &
+      The firmware shall implement an \ac{OTA} update mechanism over \ac{HTTPS} using the ESP-IDF \texttt{esp\_https\_ota} \ac{API}; the flash partition table shall define two symmetric application partitions and one \ac{OTA} data partition. &
+      SYS-013 \\ \hline
+    \label{req:sw015}SW-015~\textit{[O]} &
+      Upon initiating an \ac{OTA} update, the firmware shall cease all normal device functions — \ac{DMX}512 reception, Art-Net reception, \ac{LED} output, and \ac{UI} operation — for the entire duration of the download and flash write sequence; the device shall reboot automatically upon successful installation and return to normal operation following a failed attempt. &
+      SYS-013 \\ \hline
+    \label{req:sw016}SW-016~\textit{[O]} &
+      The firmware shall verify the \ac{CRC} and \ac{HTTPS} server certificate of each received \ac{OTA} image before committing it to the inactive application partition; automatic rollback to the previously validated image shall be triggered after three consecutive boot failures of the new image. &
+      SYS-013 \\ \hline
+    \label{req:sw017}SW-017~\textit{[O]} &
+      The firmware shall parse \ac{sACN} E1.31 Universe Discovery and Data packets received over the \ac{WiFi} interface on Core~0. &
+      SYS-014 \\ \hline
+    \label{req:sw018}SW-018~\textit{[O]} &
+      The \ac{sACN} reception task shall be pinned exclusively to Core~0. &
+      SYS-014, SYS-009 \\ \hline
+    \label{req:sw019}SW-019~\textit{[O]} &
+      The firmware shall implement an \ac{RDM} responder state machine on the \ac{DMX} \ac{UART} peripheral; the \ac{RS485} transceiver direction pin shall be switched between receive and transmit modes under firmware control in accordance with the \ac{RDM} packet exchange sequence defined in ANSI E1.20. &
+      SYS-015 \\ \hline
+    \label{req:sw020}SW-020~\textit{[O]} &
+      The firmware shall monitor the elapsed time since the last valid frame was received on any active control interface; upon exceeding a user-configurable timeout, it shall freeze all output channels at their current values and maintain that state until a new valid frame arrives. &
+      SYS-016 \\ \hline
+    \label{req:sw021}SW-021~\textit{[O]} &
+      The firmware shall register an \ac{mDNS} service record on startup and shall respond to Art-Net ArtPoll broadcast packets with a well-formed ArtPollReply containing the device short name, long name, universe assignment, and \ac{IP} address. &
+      SYS-017 \\ \hline
+    \label{req:sw022}SW-022~\textit{[O]} &
+      A \ac{CIE} 1931 luminance correction \ac{LUT} of 256 entries at \SI{16}{\bit} resolution shall be applied to all output channel values after protocol decoding and before writing to the \ac{RMT} and LEDC peripherals. &
+      SYS-018 \\ \hline
+    \label{req:sw023}SW-023~\textit{[O]} &
+      The LEDC peripheral base frequency for the analogue \ac{RGB} output stage shall be selectable from a predefined set of values via the user menu and persisted in \ac{NVS}. &
+      SYS-019 \\ \hline
+    \label{req:sw024}SW-024~\textit{[O]} &
+      The firmware shall implement an effects engine task that generates per-channel output data based on configurable effect type, colour, speed, and size parameters; the generated frame shall be formatted as a standard \ac{DMX}512 channel array and made available to all output and transmission subsystems. &
+      SYS-020 \\ \hline
+    \label{req:sw025}SW-025~\textit{[O]} &
+      When operating as a \ac{DMX} master, the firmware shall transmit \ac{DMX}512-compliant frames on the \ac{RS485} interface at the standard \SI{44}{\hertz} refresh rate by asserting the transceiver transmit-enable pin; \ac{DMX} master mode and \ac{DMX} reception mode shall be mutually exclusive. &
+      SYS-020 \\ \hline
+    \label{req:sw026}SW-026~\textit{[O]} &
+      When operating as a network master, the firmware shall transmit Art-Net ArtDmx packets and \ac{sACN} E1.31 Data packets containing the effects engine output frame over the \ac{WiFi} interface at a user-configured universe address. &
+      SYS-020 \\ \hline
+    \label{req:sw027}SW-027~\textit{[O]} &
+      The effects engine operating mode (disabled, \ac{DMX} master, or network master), effect type, colour, speed, and output universe shall be configurable via the local \ac{UI} and persisted in \ac{NVS}. &
+      SYS-020, SYS-006, SYS-007 \\ \hline
+\end{longtable}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Mechanical Requirements}
+\label{sec:req_mechanical}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{table}[H]
+  \caption{Mechanical requirements derived from system requirements.}
+  \label{tab:req_mechanical}
+  \centering
+  \begin{tabularx}{\textwidth}{|l|X|l|}
+    \hline
+    \textbf{ID} & \textbf{Requirement} & \textbf{Traces to} \\ \hline \hline
+    \label{req:me001}ME-001 &
+      The \ac{PCB} shall be mounted on the backside of the enclosure front panel and secured by screws into the enclosure. &
+      SYS-011 \\ \hline
+    \label{req:me002}ME-002 &
+      The \SI{24}{\volt} power input connector shall protrude from or be flush with the enclosure rear panel. &
+      SYS-001, SYS-011 \\ \hline
+    \label{req:me003}ME-003 &
+      The \ac{DMX}512 input connector shall be accessible from the enclosure rear or side panel. &
+      SYS-002, SYS-011 \\ \hline
+    \label{req:me004}ME-004 &
+      The \ac{OLED} display and rotary encoder shall be accessible from the enclosure front panel; the front panel shall provide corresponding cutouts through which the display and encoder shaft protrude, such that both are within direct line of sight of the operator with the \ac{PCB} mounted on the panel backside. &
+      SYS-006, SYS-011 \\ \hline
+    \label{req:me005}ME-005 &
+      The \ac{USB}-C connector shall be accessible from the enclosure exterior without tool removal of any panel. &
+      SYS-010, SYS-011 \\ \hline
+    \label{req:me006}ME-006 &
+      The cooling fan shall be mounted to direct airflow over the heatsink; the enclosure shall provide screened intake and exhaust apertures. &
+      SYS-008 \\ \hline
+    \label{req:me007}ME-007~\textit{[O]} &
+      The \SI{24}{\volt} daisy-chain power output connector shall be accessible from the enclosure rear panel, adjacent to the power input connector. &
+      SYS-012, SYS-011 \\ \hline
+  \end{tabularx}
+\end{table}
