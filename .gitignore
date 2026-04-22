@@ -1,0 +1,22 @@
+# LaTeX build artifacts
+documentation/Latex/main.aux
+documentation/Latex/main.bbl
+documentation/Latex/main.blg
+documentation/Latex/main.fdb_latexmk
+documentation/Latex/main.fls
+documentation/Latex/main.lof
+documentation/Latex/main.log
+documentation/Latex/main.lol
+documentation/Latex/main.lot
+documentation/Latex/main.out
+documentation/Latex/main.synctex.gz
+documentation/Latex/main.toc
+documentation/Latex/main.pdf
+documentation/Latex/_minted-main/
+documentation/Latex/*.tmp.*
+
+# KiCad
+PCB/file.tmp
+PCB/**/*.kicad_prl
+PCB/**/fp-info-cache
+PCB/**/*-backups/
