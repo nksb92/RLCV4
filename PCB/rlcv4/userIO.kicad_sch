@@ -1,0 +1,278 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "3b8e7e48-2b22-464c-a5fa-a8f15a150461")
+	(paper "A4")
+	(lib_symbols)
+	(wire
+		(pts
+			(xy 116.84 86.36) (xy 127 86.36)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1485cbfe-6986-4be0-8b09-2bd688d4622b")
+	)
+	(wire
+		(pts
+			(xy 116.84 78.74) (xy 127 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8f743383-b2b4-4a3f-9aa4-734ecdb00797")
+	)
+	(wire
+		(pts
+			(xy 127 82.55) (xy 116.84 82.55)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "97b74d5d-5d1c-4247-bc6b-2c3aae44e8bc")
+	)
+	(wire
+		(pts
+			(xy 118.11 48.26) (xy 125.73 48.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b217425e-a24d-4e47-b85b-3db343db6a89")
+	)
+	(wire
+		(pts
+			(xy 118.11 50.8) (xy 125.73 50.8)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b81eeed0-d830-45c5-9d96-9066945c0965")
+	)
+	(wire
+		(pts
+			(xy 118.11 45.72) (xy 125.73 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bf673f3e-7532-4128-b7e2-d708046e0f60")
+	)
+	(hierarchical_label "switch_rot_enc"
+		(shape output)
+		(at 118.11 45.72 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "00570c00-1289-43ce-8c8d-62a2d8c9b774")
+	)
+	(hierarchical_label "clk_rot_enc"
+		(shape output)
+		(at 118.11 50.8 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "14bf9d38-ac24-43a5-96f4-85213ccbc44b")
+	)
+	(hierarchical_label "SDA"
+		(shape input)
+		(at 116.84 86.36 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "19f26954-483c-4134-996e-9c7e05afc76d")
+	)
+	(hierarchical_label "SCL"
+		(shape input)
+		(at 116.84 82.55 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "2ac73dbe-b490-4b75-a2a5-b3544a4dd450")
+	)
+	(hierarchical_label "3V3"
+		(shape input)
+		(at 116.84 78.74 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "360e2573-0c96-49c0-924e-236b10132d3b")
+	)
+	(hierarchical_label "dt_rot_enc"
+		(shape output)
+		(at 118.11 48.26 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b1a70437-66b1-4d5d-9472-d112780f8ee5")
+	)
+	(sheet
+		(at 125.73 41.91)
+		(size 46.99 20.32)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "9c3ad81e-de57-4361-81a2-ee70d898b547")
+		(property "Sheetname" "rotary_encoder"
+			(at 125.73 41.1984 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "rotary_encoder.kicad_sch"
+			(at 125.73 62.8146 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "clk_rot_enc" output
+			(at 125.73 48.26 180)
+			(uuid "10396e65-4524-4193-9e1f-c7e998d54938")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "dt_rot_enc" output
+			(at 125.73 50.8 180)
+			(uuid "7151cc8f-543d-47a6-91b9-4085bd21d39f")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "switch_rot_enc" output
+			(at 125.73 45.72 180)
+			(uuid "7e400849-e465-4e54-8097-b0d6c1a96fab")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(instances
+			(project "rlcv4"
+				(path "/6f98c956-d0ae-4812-9734-20b1e3886761/627693f2-a99b-45b8-8962-a70fb0f881dd"
+					(page "8")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 127 76.2)
+		(size 45.72 20.32)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "c8b263f5-dac7-4c74-8b02-c14e024ef547")
+		(property "Sheetname" "oled_display"
+			(at 127 75.4884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "oled_display.kicad_sch"
+			(at 127 97.1046 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "SCL" input
+			(at 127 82.55 180)
+			(uuid "4bff7b0e-ea2d-4402-804d-b5f331298614")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "3V3" input
+			(at 127 78.74 180)
+			(uuid "cb9ad6f0-c9b9-4d9b-afe9-82344fbd4c1e")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(pin "SDA" input
+			(at 127 86.36 180)
+			(uuid "56382f86-0eb2-4e12-a732-5151338cbf99")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(instances
+			(project "rlcv4"
+				(path "/6f98c956-d0ae-4812-9734-20b1e3886761/627693f2-a99b-45b8-8962-a70fb0f881dd"
+					(page "9")
+				)
+			)
+		)
+	)
+)
