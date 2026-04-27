@@ -3,7 +3,10 @@
 \pdfminorversion=7
 \setlength{\headheight}{14.5pt}
 
-\usepackage{mathptmx}
+\usepackage[scaled]{helvet}
+\usepackage{inconsolata}
+\renewcommand{\familydefault}{\sfdefault}
+% \renewcommand{\familydefault}{\ttdefault}
 \usepackage[skip=15pt]{caption}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -14,25 +17,47 @@
 
 \usepackage{xcolor}
 \definecolor{border}{HTML}{ff5500}
+% Palette
+\definecolor{FrostBg}{HTML}{F2F6FB}
+\definecolor{FrostKw}{HTML}{D94400}
+\definecolor{FrostFn}{HTML}{2255AA}
+\definecolor{FrostSt}{HTML}{336644}
+\definecolor{FrostCm}{HTML}{90A8B8}
+\definecolor{FrostNm}{HTML}{FF5500}
+\definecolor{Flame}{HTML}{FF5500}
 
 \usepackage{minted}
 \usepackage{tcolorbox}
 \tcbuselibrary{breakable}
 \usepackage{etoolbox}
-\BeforeBeginEnvironment{minted}{\begin{tcolorbox}[colback=white, colframe=border, boxrule=0.4mm, arc=5px, breakable]}
-\AfterEndEnvironment{minted}{\end{tcolorbox}}
+% \BeforeBeginEnvironment{minted}{\begin{tcolorbox}[colback=white, colframe=border, boxrule=0.4mm, arc=5px, breakable]}
+% \AfterEndEnvironment{minted}{\end{tcolorbox}}
 \BeforeBeginEnvironment{circuitikz}{\begin{tcolorbox}[colback=white, colframe=border, boxrule=0.4mm, arc=5px, center upper]}
 \AfterEndEnvironment{circuitikz}{\end{tcolorbox}}
-\newenvironment{longlisting}{\captionsetup{type=listing}}{}
+\newenvironment{longlisting}{\captionsetup{type=listing}}{\vspace{\textfloatsep}}
+
+\usemintedstyle{rlcv4}
+
+\definecolor{LnBlueBg}{HTML}{5a7888}
+
 \setminted{
-  style=arduino,
-  linenos,
-  numbersep=5pt,
-  frame=leftline,
-  framesep=2mm,
-  breaklines=true,
-  xleftmargin=10pt
+  bgcolor      = FrostBg,
+  fontsize     = \footnotesize,
+  fontfamily   = tt,
+  linenos      = true,
+  numbersep    = 8pt,
+  breaklines   = true,
+  frame        = leftline,
+  rulecolor    = \color{Flame},
+  framerule    = 0.4mm,
+  xleftmargin  = 2em,      % was 10pt — needs to be > numbersep + ~15pt
+  framesep     = 5pt,
 }
+
+\renewcommand{\theFancyVerbLine}{%
+  {\color{LnBlueBg}\scriptsize\arabic{FancyVerbLine}}%
+}
+
 \renewcommand{\listingscaption}{Sourcecode}
 \renewcommand{\listoflistingscaption}{List of Sourcecodes}
 

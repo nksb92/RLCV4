@@ -1,0 +1,2 @@
+[pygments.styles]
+rlcv4 = rlcv4_pygments_style.rlcv4_style:RefinedStyle

@@ -14,7 +14,7 @@ The firmware exploits this by statically partitioning work at initialisation: ea
   \centering
   \begin{circuitikz}[>=latex]
     % Core 0 block
-    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 0.0) rectangle (5.4, 5.4);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (0.0, 0.0) rectangle (5.4, 5.4);
     \node[anchor=north, font=\bfseries] at (2.7, 5.4) {Core 0 — Real-Time};
     \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 4.5) {WLAN Stack};
     \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (2.7, 3.4) {Art-Net Parser};
@@ -25,7 +25,7 @@ The firmware exploits this by statically partitioning work at initialisation: ea
     \node[draw, fill=white, minimum width=3.0cm, minimum height=1.8cm, align=center, rounded corners] (cfg) at (8.0, 2.7) {\small\texttt{lighting\_config\_t}\\\small\texttt{portMUX\_TYPE}};
 
     % Core 1 block
-    \draw[dashed, thick, fill=gray!5, rounded corners] (10.8, 0.0) rectangle (16.2, 5.4);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (10.8, 0.0) rectangle (16.2, 5.4);
     \node[anchor=north, font=\bfseries] at (13.5, 5.4) {Core 1 — User Interface};
     \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 4.5) {Event Manager};
     \node[draw, fill=white, minimum width=4.4cm, minimum height=0.7cm, rounded corners, font=\small, align=center] at (13.5, 3.6) {Timer Manager};
@@ -74,18 +74,18 @@ lighting_config_t lighting_config;	// protected by config_mux
 
 // Core 1 — writing a new configuration
 void config_set(const lighting_config_t* src) {
-    portENTER_CRITICAL(&config_mux);
-    lighting_config = *src;	// struct copy only, no processing
-    portEXIT_CRITICAL(&config_mux);
+  portENTER_CRITICAL(&config_mux);
+  lighting_config = *src;	// struct copy only, no processing
+  portEXIT_CRITICAL(&config_mux);
 }
 
 // Core 0 — reading a snapshot before processing a frame
 lighting_config_t config_get(void) {
-    lighting_config_t snap;
-    portENTER_CRITICAL(&config_mux);
-    snap = lighting_config; // struct copy only, no processing
-    portEXIT_CRITICAL(&config_mux);
-    return snap;
+  lighting_config_t snap;
+  portENTER_CRITICAL(&config_mux);
+  snap = lighting_config; // struct copy only, no processing
+  portEXIT_CRITICAL(&config_mux);
+  return snap;
 }
 \end{minted}
 \caption{Dual-core safe access to \texttt{lighting\_config\_t} using \texttt{portMUX\_TYPE}.}
@@ -137,21 +137,21 @@ The \texttt{process\_event()} handler evaluates the current menu depth and state
 \begin{longlisting}
 \begin{minted}{cpp}
 void process_event(const event_t* event) {
-    uint8_t depth = main_sw.get_deepness();
-    uint8_t state = main_sw.get_current();
+  uint8_t depth = main_sw.get_deepness();
+  uint8_t state = main_sw.get_current();
 
-    switch (event->id) {
-        case EVT_ENCODER_STEP:
-            menu_navigate(event->param);   // signed step value
-            break;
-        case EVT_BUTTON_CLICK:
-            menu_select(depth, state);
-            break;
-        case EVT_DISPLAY_REFRESH:
-            oled_render();
-            break;
-        // Additional event handling...
-    }
+  switch (event->id) {
+    case EVT_ENCODER_STEP:
+      menu_navigate(event->param);   // signed step value
+      break;
+    case EVT_BUTTON_CLICK:
+      menu_select(depth, state);
+      break;
+    case EVT_DISPLAY_REFRESH:
+      oled_render();
+      break;
+    // Additional event handling...
+  }
 }
 \end{minted}
 \caption{Event dispatch into the menu \ac{FSM}.}
@@ -173,7 +173,7 @@ For example, the display standby timer pushes \texttt{EVT\_DISPLAY\_STANDBY} whe
   \centering
   \begin{circuitikz}[>=latex]
     % Timer Manager block
-    \draw[dashed, thick, fill=gray!5, rounded corners] (2.8, 0.5) rectangle (8.6, 3.5);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (2.8, 0.5) rectangle (8.6, 3.5);
     \node[anchor=north] at (5.7, 3.5) {\textbf{Timer Manager}};
 
     % Input
@@ -246,26 +246,26 @@ typedef struct menu_item_t menu_item_t;
 
 // Icon wrapper — stores bitmap dimensions, rendering offset, and flash data pointer
 typedef struct {
-    uint8_t width;
-    uint8_t height;
-    int8_t  x_offset;
-    int8_t  y_offset;
-    const uint8_t* data;
+  uint8_t width;
+  uint8_t height;
+  int8_t  x_offset;
+  int8_t  y_offset;
+  const uint8_t* data;
 } icon_t;
 
 // Item type discriminator
 typedef enum {
-    ITEM_SUBMENU,      // Opens a deeper menu page
-    ITEM_ACTION,       // Executes a void callback
-    ITEM_EDIT_UINT16,  // In-place numeric editor with bounds
-    ITEM_BACK          // Returns to the parent page
+  ITEM_SUBMENU,      // Opens a deeper menu page
+  ITEM_ACTION,       // Executes a void callback
+  ITEM_EDIT_UINT16,  // In-place numeric editor with bounds
+  ITEM_BACK          // Returns to the parent page
 } menu_item_type_t;
 
 // Bounds descriptor for editable uint16 parameters
 typedef struct {
-    uint16_t* val_ptr;   // Pointer to the variable being edited
-    uint16_t  min_val;
-    uint16_t  max_val;
+  uint16_t* val_ptr;   // Pointer to the variable being edited
+  uint16_t  min_val;
+  uint16_t  max_val;
 } edit_uint16_t;
 \end{minted}
 \caption{Supporting type definitions: icon wrapper, item type discriminator, and bounds descriptor.}
@@ -276,22 +276,22 @@ typedef struct {
 \begin{minted}{c}
 // Menu item — one selectable entry within a page
 struct menu_item_t {
-    const char*      label;
-    const icon_t*    icon;
-    menu_item_type_t type;
-    union {
-        menu_page_t* submenu;
-        void        (*action_cb)(void);
-        edit_uint16_t edit;
-    } target;
+  const char*      label;
+  const icon_t*    icon;
+  menu_item_type_t type;
+  union {
+    menu_page_t* submenu;
+    void        (*action_cb)(void);
+    edit_uint16_t edit;
+  } target;
 };
 
 // Menu page — one visible layer of the hierarchy
 struct menu_page_t {
-    const char*  title;
-    menu_page_t* parent;    // NULL for the top-level page
-    uint8_t      num_items;
-    menu_item_t* items;
+  const char*  title;
+  menu_page_t* parent;    // NULL for the top-level page
+  uint8_t      num_items;
+  menu_item_t* items;
 };
 \end{minted}
 \caption{Composite types: \texttt{menu\_item\_t} and \texttt{menu\_page\_t}.}
@@ -313,7 +313,7 @@ The top-level page carries a \texttt{NULL} parent pointer; all other pages carry
     % Layer-2 nodes
     \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (artnet) at (7.5, 3.2) {\texttt{page\_artnet}};
     \node[draw, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (dmxp)   at (7.5, 2.0) {\texttt{page\_dmx}};
-    \node[draw, dashed, fill=white, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (reb) at (7.5, 0.8) {\small\texttt{action\_reboot\_device}};
+    \node[draw, dashed, fill=FrostBg, minimum width=3.2cm, minimum height=0.8cm, rounded corners] (reb) at (7.5, 0.8) {\small\texttt{action\_reboot\_device}};
 
     % Navigation arrows
     \draw[-latex, thick, rounded corners] (main.east) -- ++(0.5,0) |- (artnet.west)
@@ -341,34 +341,34 @@ extern menu_page_t page_main;
 
 // ---- Layer 2: Art-Net submenu ----
 menu_item_t items_artnet[] = {
-    { "Universe", &icon_artnet, ITEM_EDIT_UINT16,
-      .target.edit = { (uint16_t*)&g_artnet_universe, 0, 32767 } },
-    { "Save NVS", &icon_save,   ITEM_ACTION,
-      .target.action_cb = action_save_to_nvs },
-    { "Back",     &icon_back,   ITEM_BACK,
-      .target = {0} }
+  { "Universe", &icon_artnet, ITEM_EDIT_UINT16,
+    .target.edit = { (uint16_t*)&g_artnet_universe, 0, 32767 } },
+  { "Save NVS", &icon_save,   ITEM_ACTION,
+    .target.action_cb = action_save_to_nvs },
+  { "Back",     &icon_back,   ITEM_BACK,
+    .target = {0} }
 };
 menu_page_t page_artnet = { "Art-Net Setup", &page_main, 3, items_artnet };
 
 // ---- Layer 2: DMX submenu ----
 menu_item_t items_dmx[] = {
-    { "Address",  &icon_dmx,  ITEM_EDIT_UINT16,
-      .target.edit = { (uint16_t*)&g_dmx_address, 1, 512 } },
-    { "Save NVS", &icon_save, ITEM_ACTION,
-      .target.action_cb = action_save_to_nvs },
-    { "Back",     &icon_back, ITEM_BACK,
-      .target = {0} }
+  { "Address",  &icon_dmx,  ITEM_EDIT_UINT16,
+    .target.edit = { (uint16_t*)&g_dmx_address, 1, 512 } },
+  { "Save NVS", &icon_save, ITEM_ACTION,
+    .target.action_cb = action_save_to_nvs },
+  { "Back",     &icon_back, ITEM_BACK,
+    .target = {0} }
 };
 menu_page_t page_dmx = { "DMX Setup", &page_main, 3, items_dmx };
 
 // ---- Layer 1: Main menu ----
 menu_item_t items_main[] = {
-    { "Art-Net", &icon_artnet, ITEM_SUBMENU,
-      .target.submenu = &page_artnet },
-    { "DMX512",  &icon_dmx,   ITEM_SUBMENU,
-      .target.submenu = &page_dmx },
-    { "Reboot",  &icon_save,  ITEM_ACTION,
-      .target.action_cb = action_reboot_device }
+  { "Art-Net", &icon_artnet, ITEM_SUBMENU,
+    .target.submenu = &page_artnet },
+  { "DMX512",  &icon_dmx,   ITEM_SUBMENU,
+    .target.submenu = &page_dmx },
+  { "Reboot",  &icon_save,  ITEM_ACTION,
+    .target.action_cb = action_reboot_device }
 };
 menu_page_t page_main = { "Main Menu", NULL, 3, items_main };
 \end{minted}
@@ -401,34 +401,34 @@ This ensures the device always starts in a known-good, operational state.
 \begin{minted}{c}
 // Container for storing configuration data and its integrity check
 struct nvs_payload_t {
-    config_t config_data; // All runtime parameters
-    uint8_t  crc;         // CRC calculated over config_data
+  config_t config_data; // All runtime parameters
+  uint8_t  crc;         // CRC calculated over config_data
 };
 
 // Simplified logic for loading configuration from NVS on boot
 void load_config_from_nvs(void) {
-    nvs_payload_t payload;
+  nvs_payload_t payload;
 
-    // Attempt to read the entire payload blob from NVS.
-    // nvs_read_block() is a placeholder for the actual NVS API call.
-    if (nvs_read_block(&payload, sizeof(payload))) {
+  // Attempt to read the entire payload blob from NVS.
+  // nvs_read_block() is a placeholder for the actual NVS API call.
+  if (nvs_read_block(&payload, sizeof(payload))) {
 
-        // config was read, now validate it.
-        uint8_t calculated_crc = crc8_compute(
-            (uint8_t*)&payload.config_data,
-            sizeof(payload.config_data)
-        );
+    // config was read, now validate it.
+    uint8_t calculated_crc = crc8_compute(
+      (uint8_t*)&payload.config_data,
+      sizeof(payload.config_data)
+    );
 
-        if (calculated_crc == payload.crc) {
-            // CRC matches, apply the loaded configuration.
-            apply_runtime_config(payload.config_data);
-            return; // Success
-        }
+    if (calculated_crc == payload.crc) {
+      // CRC matches, apply the loaded configuration.
+      apply_runtime_config(payload.config_data);
+      return; // Success
     }
+  }
 
-    // If read failed, blob was wrong size, or CRC was invalid,
-    // apply factory defaults to ensure a safe state.
-    apply_factory_defaults();
+  // If read failed, blob was wrong size, or CRC was invalid,
+  // apply factory defaults to ensure a safe state.
+  apply_factory_defaults();
 }
 \end{minted}
 \caption{Simplified logic for reading and validating parameters from \ac{NVS} on boot.}
@@ -447,14 +447,14 @@ Either protocol driver writes incoming channel data into the same double-buffere
   \centering
   \begin{circuitikz}[>=latex]
     % Protocol Receivers
-    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 2.6) rectangle (5.2, 5.8);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (0.0, 2.6) rectangle (5.2, 5.8);
     \node[anchor=north, font=\bfseries\small] at (2.6, 5.8) {Protocol Receivers};
     \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (artnet) at (2.6, 4.7) {Art-Net Receiver};
     \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (sacn)   at (2.6, 3.5) {sACN Receiver};
     % Network Manager below the box
     \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (netmgr) at (2.6, 1.3) {Network Manager};
     % Shared Data Layer
-    \draw[dashed, thick, fill=gray!5, rounded corners] (5.9, 0.4) rectangle (11.1, 5.8);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (5.9, 0.4) rectangle (11.1, 5.8);
     \node[anchor=north, font=\bfseries\small] at (8.5, 5.8) {Shared Data Layer};
     \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (buf0) at (8.5, 4.7) {Primary Frame Buffer};
     \node[draw, fill=white, minimum width=4.0cm, minimum height=0.8cm, rounded corners, font=\small] (buf1) at (8.5, 3.5) {Secondary Frame Buffer};
@@ -523,25 +523,25 @@ All boundary calculations that determine whether a segment's channel range overf
 static constexpr uint16_t DMX_ADDRESS_COUNT = 512; // valid: 1–512
 
 struct universe_config_t {
-    uint16_t start_universe; // first universe carrying segment data
-    uint16_t start_channel;  // DMX start address (1–512)
-    uint16_t num_segments;   // number of addressed LED segments
+  uint16_t start_universe; // first universe carrying segment data
+  uint16_t start_channel;  // DMX start address (1–512)
+  uint16_t num_segments;   // number of addressed LED segments
 
-    // 3 RGB channels per segment + 1 global dimmer channel
-    uint16_t used_channels() const { return num_segments * 3u + 1u; }
+  // 3 RGB channels per segment + 1 global dimmer channel
+  uint16_t used_channels() const { return num_segments * 3u + 1u; }
 
-    bool spans_two_universes() const {
-        return (start_channel + used_channels() - 1u) > DMX_ADDRESS_COUNT;
-    }
+  bool spans_two_universes() const {
+    return (start_channel + used_channels() - 1u) > DMX_ADDRESS_COUNT;
+  }
 
-    uint16_t end_universe() const {
-        return start_universe + (spans_two_universes() ? 1u : 0u);
-    }
+  uint16_t end_universe() const {
+    return start_universe + (spans_two_universes() ? 1u : 0u);
+  }
 
-    uint16_t end_channel() const {
-        uint16_t last = start_channel + used_channels() - 1u;
-        return spans_two_universes() ? last - DMX_ADDRESS_COUNT : last;
-    }
+  uint16_t end_channel() const {
+    uint16_t last = start_channel + used_channels() - 1u;
+    return spans_two_universes() ? last - DMX_ADDRESS_COUNT : last;
+  }
 };
 \end{minted}
 \caption{\texttt{universe\_config\_t}: universe mapping and boundary computation.}
@@ -560,28 +560,30 @@ The same byte encodes both the front-buffer index (bit~0) and a ready flag (bit~
   \centering
   \begin{circuitikz}[>=latex]
     % Writer
-    \draw[dashed, thick, fill=gray!5, rounded corners] (0.0, 2.6) rectangle (4.8, 5.2);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (0.0, 2.3) rectangle (4.8, 5.2);
     \node[anchor=north, font=\bfseries\small] at (2.4, 5.2) {Network Callback};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (wrt)  at (2.4, 4.5) {Write to Back Buffer};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (swap) at (2.4, 3.3) {Atomic Store (swap)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (wrt)  at (2.4, 4.2) {Write to Back Buffer};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (swap) at (2.4, 3) {Atomic Store (swap)};
     % Buffers
-    \draw[dashed, thick, fill=gray!5, rounded corners] (5.6, 0.3) rectangle (10.4, 5.2);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (5.6, 0.3) rectangle (10.4, 5.2);
     \node[anchor=north, font=\bfseries\small] at (8.0, 5.2) {Double Buffer};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b0) at (8.0, 4.5) {Buffer 0 (512 B)};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b1) at (8.0, 3.3) {Buffer 1 (512 B)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b0) at (8.0, 4.2) {Buffer 0 (512 B)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (b1) at (8.0, 3) {Buffer 1 (512 B)};
     \node[draw, fill=white, minimum width=3.8cm, minimum height=1.0cm, rounded corners, font=\small, align=center] (st) at (8.0, 1.5) {\texttt{atomic<uint8\_t>}\\state};
     % Reader
-    \draw[dashed, thick, fill=gray!5, rounded corners] (11.2, 2.6) rectangle (16.0, 5.2);
+    \draw[dashed, thick, fill=FrostBg, rounded corners] (11.2, 2.3) rectangle (16.0, 5.2);
     \node[anchor=north, font=\bfseries\small] at (13.6, 5.2) {Output Routine};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (rd)  at (13.6, 4.5) {Atomic Load (index)};
-    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (out) at (13.6, 3.3) {Drive LED String};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (rd)  at (13.6, 4.2) {Atomic Load (index)};
+    \node[draw, fill=white, minimum width=3.8cm, minimum height=0.7cm, rounded corners, font=\small] (out) at (13.6, 3) {Drive LED String};
     % Arrows
     \draw[-latex, thick] (wrt.south)  -- (swap.north);
     \draw[-latex, thick] (rd.south)   -- (out.north);
-    \draw[-latex, thick, rounded corners=4pt] (wrt.east)  -- ++(0.4,0) |- (b0.west);
-    \draw[-latex, thick, rounded corners=4pt] (swap.east) -- ++(0.9,0) |- (st.west);
+    \draw[-latex, thick, rounded corners=4pt] (wrt.east)  -- (b0.west);
+    \draw[-latex, thick, rounded corners=4pt] (wrt.east)  -- ++(0.8,0) |- (b1.west);
+    \draw[-latex, thick, rounded corners=4pt] (swap.east) -- ++(0.6,0) |- (st.west);
     \draw[-latex, thick, rounded corners=4pt] (st.east)   -- ++(0.9,0) |- (rd.west);
-    \draw[-latex, thick, rounded corners=4pt] (b1.east)   -- ++(0.4,0) |- (out.west);
+    \draw[-latex, thick, rounded corners=4pt] (b0.east)   -- (rd.west);
+    \draw[-latex, thick, rounded corners=4pt] (b1.east)   -- (out.west);
   \end{circuitikz}
   \caption{Double-buffered frame store operation.}
   \label{fig:dmx_double_buffer}
@@ -598,37 +600,37 @@ On the Xtensa~LX7, both operations compile to a single native load or store inst
 \begin{minted}{cpp}
 class dmx_universe_buf {
 public:
-    static constexpr uint16_t CHANNEL_COUNT = DMX_ADDRESS_COUNT;
+  static constexpr uint16_t CHANNEL_COUNT = DMX_ADDRESS_COUNT;
 
 private:
-    uint8_t frame_[2][CHANNEL_COUNT] = {};  // index 0 = DMX address 1
-    std::atomic<uint8_t> state_{0}; // bit 0: front-buffer index; bit 7: ready flag
+  uint8_t frame_[2][CHANNEL_COUNT] = {};  // index 0 = DMX address 1
+  std::atomic<uint8_t> state_{0}; // bit 0: front-buffer index; bit 7: ready flag
 
-    static constexpr uint8_t READY_BIT = 0x80u;
+  static constexpr uint8_t READY_BIT = 0x80u;
 
 public:
-    // Called from the network reception callback.
-    // Copies |count| channel bytes into the back buffer (DMX address 1 at index 0)
-    // and atomically promotes the back buffer to the front.
-    void write(const uint8_t* src, uint16_t count) {
-        uint8_t back = (state_.load(std::memory_order_relaxed) & 1u) ^ 1u;
-        memcpy(frame_[back], src,
-               std::min(count, static_cast<uint16_t>(CHANNEL_COUNT)));
-        state_.store(static_cast<uint8_t>(back | READY_BIT),
-                     std::memory_order_release);
-    }
+  // Called from the network reception callback.
+  // Copies |count| channel bytes into the back buffer (DMX address 1 at index 0)
+  // and atomically promotes the back buffer to the front.
+  void write(const uint8_t* src, uint16_t count) {
+    uint8_t back = (state_.load(std::memory_order_relaxed) & 1u) ^ 1u;
+    memcpy(frame_[back], src,
+      std::min(count, static_cast<uint16_t>(CHANNEL_COUNT)));
+    state_.store(static_cast<uint8_t>(back | READY_BIT),
+      std::memory_order_release);
+  }
 
-    // Called from the lighting engine.
-    // Returns a pointer to the front buffer if a new frame is available,
-    // or nullptr if no frame has arrived since the last call.
-    // The channel byte for DMX address N is located at index N-1.
-    const uint8_t* consume() {
-        uint8_t s = state_.load(std::memory_order_acquire);
-        if (!(s & READY_BIT)) return nullptr;
-        state_.store(static_cast<uint8_t>(s & ~READY_BIT),
-                     std::memory_order_relaxed);
-        return frame_[s & 1u];
-    }
+  // Called from the lighting engine.
+  // Returns a pointer to the front buffer if a new frame is available,
+  // or nullptr if no frame has arrived since the last call.
+  // The channel byte for DMX address N is located at index N-1.
+  const uint8_t* consume() {
+    uint8_t s = state_.load(std::memory_order_acquire);
+    if (!(s & READY_BIT)) return nullptr;
+    state_.store(static_cast<uint8_t>(s & ~READY_BIT),
+      std::memory_order_relaxed);
+    return frame_[s & 1u];
+  }
 };
 \end{minted}
 \caption{\texttt{dmx\_universe\_buf}: double-buffered \ac{DMX} frame store with atomic index swap.}
@@ -650,7 +652,7 @@ On entry into \texttt{RECONNECTING}, a configurable back-off timer prevents rapi
   \begin{circuitikz}[>=latex]
     \node[draw, fill=white, minimum width=2.6cm, minimum height=0.8cm, rounded corners] (idle)   at (0.0,  1.5) {\texttt{IDLE}};
     \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (conn)   at (5.0,  1.5) {\texttt{CONNECTING}};
-    \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (up)     at (10.5, 1.5) {\texttt{CONNECTED}};
+    \node[draw, fill=FrostBg, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (up)     at (10.5, 1.5) {\texttt{CONNECTED}};
     \node[draw, fill=white, minimum width=2.8cm, minimum height=0.8cm, rounded corners] (reconn) at (10.5, 0.0) {\texttt{RECONNECTING}};
 
     \draw[-latex, thick] (idle.east) -- (conn.west)
@@ -677,53 +679,59 @@ enum class wifi_state_t { IDLE, CONNECTING, CONNECTED, RECONNECTING };
 
 class network_manager {
 private:
-    wifi_state_t state_        = wifi_state_t::IDLE;
-    uint32_t     reconnect_at_ = 0;
-    const char*  ssid_;
-    const char*  password_;
+  wifi_state_t state_        = wifi_state_t::IDLE;
+  uint32_t     reconnect_at_ = 0;
+  const char*  ssid_;
+  const char*  password_;
 
-    static constexpr uint32_t RECONNECT_DELAY_MS = 5000u;
+  static constexpr uint32_t RECONNECT_DELAY_MS = 5000u;
 
 public:
-    network_manager(const char* ssid, const char* password)
-        : ssid_(ssid), password_(password) {}
+  network_manager(const char* ssid, const char* password)
+    : ssid_(ssid), password_(password) {}
 
-    void start() {
-        WiFi.begin(ssid_, password_);
-        state_ = wifi_state_t::CONNECTING;
-    }
+  void start() {
+    WiFi.begin(ssid_, password_);
+    state_ = wifi_state_t::CONNECTING;
+  }
 
-    void stop() {
-        WiFi.disconnect();
-        WiFi.mode(WIFI_OFF);
-        state_ = wifi_state_t::IDLE;
-        event_manager.post(EVT_WIFI_STOPPED);
-    }
+  void stop() {
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    state_ = wifi_state_t::IDLE;
+    event_manager.post(EVT_WIFI_STOPPED);
+  }
 
-    // Polled once per Core 0 main-loop iteration.
-    void poll() {
-        const bool linked = (WiFi.status() == WL_CONNECTED);
-        switch (state_) {
-            case wifi_state_t::CONNECTING:
-                if (linked) { state_ = wifi_state_t::CONNECTED;
-                              event_manager.post(EVT_WIFI_CONNECTED); }
-                break;
-            case wifi_state_t::CONNECTED:
-                if (!linked) { state_        = wifi_state_t::RECONNECTING;
-                               reconnect_at_ = millis() + RECONNECT_DELAY_MS;
-                               event_manager.post(EVT_WIFI_DISCONNECTED); }
-                break;
-            case wifi_state_t::RECONNECTING:
-                if (linked) { state_ = wifi_state_t::CONNECTED;
-                              event_manager.post(EVT_WIFI_CONNECTED); }
-                else if (millis() >= reconnect_at_) {
-                    WiFi.begin(ssid_, password_);
-                    reconnect_at_ = millis() + RECONNECT_DELAY_MS;
-                }
-                break;
-            default: break;
+  // Polled once per Core 0 main-loop iteration.
+  void poll() {
+    const bool linked = (WiFi.status() == WL_CONNECTED);
+    switch (state_) {
+      case wifi_state_t::CONNECTING:
+        if (linked) {
+          state_ = wifi_state_t::CONNECTED;
+          event_manager.post(EVT_WIFI_CONNECTED);
         }
+        break;
+      case wifi_state_t::CONNECTED:
+        if (!linked) {
+          state_        = wifi_state_t::RECONNECTING;
+          reconnect_at_ = millis() + RECONNECT_DELAY_MS;
+          event_manager.post(EVT_WIFI_DISCONNECTED);
+        }
+        break;
+      case wifi_state_t::RECONNECTING:
+        if (linked) {
+          state_ = wifi_state_t::CONNECTED;
+          event_manager.post(EVT_WIFI_CONNECTED);
+        }
+        else if (millis() >= reconnect_at_) {
+          WiFi.begin(ssid_, password_);
+          reconnect_at_ = millis() + RECONNECT_DELAY_MS;
+        }
+        break;
+      default: break;
     }
+  }
 };
 \end{minted}
 \caption{Network Manager implementation.}
@@ -744,35 +752,35 @@ The receiver holds no protocol state of its own; all Art-Net framing and sequenc
 \begin{minted}{cpp}
 class artnet_receiver {
 private:
-    ArtnetWifi        artnet_;
-    dmx_universe_buf* primary_;
-    dmx_universe_buf* secondary_;
+  ArtnetWifi        artnet_;
+  dmx_universe_buf* primary_;
+  dmx_universe_buf* secondary_;
 
 public:
-    void init(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
-        primary_   = primary;
-        secondary_ = secondary;
-        artnet_.setArtDmxCallback(
-            [this](uint16_t universe, uint16_t length,
-                   uint8_t /*seq*/, uint8_t* data) {
-                on_dmx_frame(universe, length, data);
-            });
-    }
+  void init(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
+    primary_   = primary;
+    secondary_ = secondary;
+    artnet_.setArtDmxCallback(
+      [this](uint16_t universe, uint16_t length,
+             uint8_t /*seq*/, uint8_t* data) {
+        on_dmx_frame(universe, length, data);
+      });
+  }
 
-    void begin() { artnet_.begin(); } // called on EVT_WIFI_CONNECTED
-    void poll()  { artnet_.read();  } // called once per Core 0 loop iteration
+  void begin() { artnet_.begin(); } // called on EVT_WIFI_CONNECTED
+  void poll()  { artnet_.read();  } // called once per Core 0 loop iteration
 
 private:
-    void on_dmx_frame(uint16_t universe, uint16_t length, const uint8_t* data) {
-        // Snapshot avoids holding the spinlock across the memcpy inside write().
-        const universe_config_t cfg = config_get();
+  void on_dmx_frame(uint16_t universe, uint16_t length, const uint8_t* data) {
+    // Snapshot avoids holding the spinlock across the memcpy inside write().
+    const universe_config_t cfg = config_get();
 
-        if (universe == cfg.start_universe) {
-            primary_->write(data, length);
-        } else if (cfg.spans_two_universes() && universe == cfg.end_universe()) {
-            secondary_->write(data, length);
-        }
+    if (universe == cfg.start_universe) {
+      primary_->write(data, length);
+    } else if (cfg.spans_two_universes() && universe == cfg.end_universe()) {
+      secondary_->write(data, length);
     }
+  }
 };
 \end{minted}
 \caption{Art-Net receiver implementation.}
@@ -808,99 +816,102 @@ The Core~1 event handler responds with a hold-last-look policy, preserving the l
 \begin{longlisting}
 \begin{minted}{cpp}
 struct sacn_source_t {
-    uint8_t  cid[16];           // 16-byte component identifier (UUID-style)
-    uint8_t  priority;
-    uint32_t last_packet_ms;
+  uint8_t  cid[16];           // 16-byte component identifier (UUID-style)
+  uint8_t  priority;
+  uint32_t last_pkt_ms;
 };
 
 class sacn_receiver {
 private:
-    WiFiUDP udp_;
-    dmx_universe_buf* primary_;
-    dmx_universe_buf* secondary_;
-    sacn_source_t source_     = {};
-    bool has_source_ = false;
+  WiFiUDP udp_;
+  dmx_universe_buf* primary_;
+  dmx_universe_buf* secondary_;
+  sacn_source_t source_     = {};
+  bool has_source_ = false;
 
-    static constexpr uint16_t E131_PORT = 5568u;
-    static constexpr uint32_t DATA_LOSS_MS = 2500u;
-    static constexpr uint16_t MIN_PKT_LEN = 127u; // 126-byte header + 1 data byte
+  static constexpr uint16_t E131_PORT = 5568u;
+  static constexpr uint32_t DATA_LOSS_MS = 2500u;
+  static constexpr uint16_t MIN_PKT_LEN = 127u; // 126-byte header + 1 data byte
 
 public:
-    void begin(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
-        primary_   = primary;
-        secondary_ = secondary;
-        udp_.begin(E131_PORT);
-        const universe_config_t cfg = config_get();
-        join_multicast(cfg.start_universe);
-        if (cfg.spans_two_universes()) join_multicast(cfg.end_universe());
-    }
+  void begin(dmx_universe_buf* primary, dmx_universe_buf* secondary) {
+    primary_   = primary;
+    secondary_ = secondary;
+    udp_.begin(E131_PORT);
+    const universe_config_t cfg = config_get();
+    join_multicast(cfg.start_universe);
+    if (cfg.spans_two_universes()) join_multicast(cfg.end_universe());
+  }
 
-    void stop() { udp_.stop(); has_source_ = false; }
+  void stop() { udp_.stop(); has_source_ = false; }
 
-    void poll() {
-        check_data_loss();
-        const int len = udp_.parsePacket();
-        if (len < MIN_PKT_LEN) return;
-        uint8_t pkt[638];
-        if (udp_.read(pkt, sizeof(pkt)) < MIN_PKT_LEN) return;
-        if (!valid_preamble(pkt)) return;
+  void poll() {
+    check_data_loss();
+    const int len = udp_.parsePacket();
+    if (len < MIN_PKT_LEN) return;
+    uint8_t pkt[638];
+    if (udp_.read(pkt, sizeof(pkt)) < MIN_PKT_LEN) return;
+    if (!valid_preamble(pkt)) return;
 
-        const uint16_t universe = (uint16_t(pkt[113]) << 8) | pkt[114];
-        const uint8_t  priority = pkt[108];
-        const uint16_t slots = (uint16_t(pkt[123]) << 8) | pkt[124];
-        const uint8_t* dmx = &pkt[126];  // first channel value; start code excluded
+    const uint16_t universe = (uint16_t(pkt[113]) << 8) | pkt[114];
+    const uint8_t  priority = pkt[108];
+    const uint16_t slots = (uint16_t(pkt[123]) << 8) | pkt[124];
+    const uint8_t* dmx = &pkt[126];  // first channel value; start code excluded
 
-        if (slots < 2u || !accept_source(&pkt[22], priority)) return;
+    if (slots < 2u || !accept_source(&pkt[22], priority)) return;
 
-        const universe_config_t cfg = config_get();
-        if (universe == cfg.start_universe)
-            primary_->write(dmx, slots - 1u);
-        else if (cfg.spans_two_universes() && universe == cfg.end_universe())
-            secondary_->write(dmx, slots - 1u);
-    }
+    const universe_config_t cfg = config_get();
+    if (universe == cfg.start_universe)
+      primary_->write(dmx, slots - 1u);
+    else if (cfg.spans_two_universes() && universe == cfg.end_universe())
+      secondary_->write(dmx, slots - 1u);
+  }
 
 private:
-    void join_multicast(uint16_t u) {
-        udp_.beginMulticast(IPAddress(239u, 255u, u >> 8, u & 0xFFu), E131_PORT);
-    }
+  void join_multicast(uint16_t u) {
+    udp_.beginMulticast(IPAddress(239u, 255u, u >> 8, u & 0xFFu), E131_PORT);
+  }
 
-    bool accept_source(const uint8_t* cid, uint8_t priority) {
-        const uint32_t now = millis();
-        if (!has_source_) {
-            memcpy(source_.cid, cid, 16);
-            source_.priority = priority; source_.last_packet_ms = now;
-            return has_source_ = true;
-        }
-        if (memcmp(source_.cid, cid, 16) == 0) {
-            source_.priority = priority; source_.last_packet_ms = now;
-            return true;
-        }
-        if (priority > source_.priority) {
-            memcpy(source_.cid, cid, 16);
-            source_.priority = priority; source_.last_packet_ms = now;
-            return true;
-        }
-        return false;
+  bool accept_source(const uint8_t* cid, uint8_t priority) {
+    const uint32_t now = millis();
+    if (!has_source_) {
+      memcpy(source_.cid, cid, 16);
+      source_.priority = priority; source_.last_pkt_ms = now;
+      return has_source_ = true;
     }
+    if (memcmp(source_.cid, cid, 16) == 0) {
+      source_.priority = priority; source_.last_pkt_ms = now;
+      return true;
+    }
+    if (priority > source_.priority) {
+      memcpy(source_.cid, cid, 16);
+      source_.priority = priority; source_.last_pkt_ms = now;
+      return true;
+    }
+    return false;
+  }
 
-    void check_data_loss() {
-        if (has_source_ && (millis() - source_.last_packet_ms > DATA_LOSS_MS)) {
-            has_source_ = false;
-            event_manager.post(EVT_SACN_DATA_LOSS);
-        }
+  void check_data_loss() {
+    if (has_source_ && (millis() - source_.last_pkt_ms > DATA_LOSS_MS)) {
+      has_source_ = false;
+      event_manager.post(EVT_SACN_DATA_LOSS);
     }
+  }
 
-    static bool valid_preamble(const uint8_t* p) {
-        if (p[0] != 0x00u || p[1] != 0x10u) return false;
-        static const uint8_t ACN_ID[12] =
-            {0x41,0x53,0x43,0x2D,0x45,0x31,0x2E,0x31,0x37,0x00,0x00,0x00};
-        return memcmp(&p[4], ACN_ID, 12) == 0;
-    }
+  static bool valid_preamble(const uint8_t* p) {
+    if (p[0] != 0x00u || p[1] != 0x10u) return false;
+    static const uint8_t ACN_ID[12] =
+      {0x41,0x53,0x43,0x2D,0x45,0x31,0x2E,0x31,0x37,0x00,0x00,0x00};
+    return memcmp(&p[4], ACN_ID, 12) == 0;
+  }
 };
 \end{minted}
-\caption{\ac{sACN} receiver. \texttt{accept\_source()} implements the single-winner selection policy: it always accepts the known active source and replaces it only when a competing source arrives with strictly higher priority. \texttt{valid\_preamble()} checks the ANSI~E1.31 preamble-size field and the ACN packet identifier, rejecting malformed or non-E1.31 datagrams before any further parsing occurs.}
+\caption{\ac{sACN} receiver class.}
 \label{lst:sacn_receiver}
 \end{longlisting}
+
+\texttt{accept\_source()} implements the single-winner selection policy: it always accepts the known active source and replaces it only when a competing source arrives with strictly higher priority.
+\texttt{valid\_preamble()} checks the ANSI~E1.31 preamble-size field and the ACN packet identifier, rejecting malformed or non-E1.31 datagrams before any further parsing occurs.
 
 \subsubsection{Lighting Engine Integration}
 \label{sec:net_lighting_integration}
@@ -913,41 +924,41 @@ The function is entirely protocol-agnostic: the data in the buffers may have ori
 \begin{longlisting}
 \begin{minted}{cpp}
 void lighting_engine_tick(dmx_universe_buf& primary, dmx_universe_buf& secondary) {
-    const universe_config_t cfg = config_get();
+  const universe_config_t cfg = config_get();
 
-    const uint8_t* pdata = primary.consume();
-    if (!pdata) return;  // no new primary-universe frame
+  const uint8_t* pdata = primary.consume();
+  if (!pdata) return;  // no new primary-universe frame
 
-    const uint8_t* sdata = nullptr;
-    if (cfg.spans_two_universes()) {
-        sdata = secondary.consume();
-        if (!sdata) return;  // hold until the secondary universe also arrives
-    }
+  const uint8_t* sdata = nullptr;
+  if (cfg.spans_two_universes()) {
+    sdata = secondary.consume();
+    if (!sdata) return;  // hold until the secondary universe also arrives
+  }
 
-    const uint16_t pixels_per_seg  = NUM_PIXEL / cfg.num_segments;
-    uint16_t       channel_idx     = cfg.start_channel - 1u;  // DMX address → 0-based
-    uint16_t       led_idx         = 0;
+  const uint16_t pixels_per_seg  = NUM_PIXEL / cfg.num_segments;
+  uint16_t       channel_idx     = cfg.start_channel - 1u;  // DMX address → 0-based
+  uint16_t       led_idx         = 0;
 
-    for (uint16_t seg = 0; seg < cfg.num_segments; ++seg) {
-        // Resolve each channel index against the correct universe buffer.
-        // Indices 0–(DMX_ADDRESS_COUNT-1) map to pdata; overflow maps to sdata.
-        auto ch = [&](uint16_t idx) -> uint8_t {
-            return (idx < DMX_ADDRESS_COUNT) ? pdata[idx] : sdata[idx - DMX_ADDRESS_COUNT];
-        };
+  for (uint16_t seg = 0; seg < cfg.num_segments; ++seg) {
+    // Resolve each channel index against the correct universe buffer.
+    // Indices 0–(DMX_ADDRESS_COUNT-1) map to pdata; overflow maps to sdata.
+    auto ch = [&](uint16_t idx) -> uint8_t {
+      return (idx < DMX_ADDRESS_COUNT) ? pdata[idx] : sdata[idx - DMX_ADDRESS_COUNT];
+    };
 
-        const uint8_t r = ch(channel_idx++);
-        const uint8_t g = ch(channel_idx++);
-        const uint8_t b = ch(channel_idx++);
+    const uint8_t r = ch(channel_idx++);
+    const uint8_t g = ch(channel_idx++);
+    const uint8_t b = ch(channel_idx++);
 
-        // Global dimmer occupies the last channel in the configured range.
-        const uint8_t dim = ch(cfg.end_channel() - 1u + (cfg.start_channel - 1u));
+    // Global dimmer occupies the last channel in the configured range.
+    const uint8_t dim = ch(cfg.end_channel() - 1u + (cfg.start_channel - 1u));
 
-        CRGB color(r, g, b);
-        color.nscale8_video(dim);
-        for (uint16_t px = 0; px < pixels_per_seg; ++px)
-            pixels.setPixelColor(led_idx++, pixels.Color(color.r, color.g, color.b));
-    }
-    pixels.show();
+    CRGB color(r, g, b);
+    color.nscale8_video(dim);
+    for (uint16_t px = 0; px < pixels_per_seg; ++px)
+      pixels.setPixelColor(led_idx++, pixels.Color(color.r, color.g, color.b));
+  }
+  pixels.show();
 }
 \end{minted}
 \caption{Lighting engine tick function.}
